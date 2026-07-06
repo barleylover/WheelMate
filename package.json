@@ -1,0 +1,35 @@
+{
+  "name": "wheelmate",
+  "version": "0.1.0",
+  "description": "WheelMate accessibility-based place recommendation MCP server for AGENTIC PLAYER 10 / PlayMCP.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json && cp src/data/schema.sql dist/data/schema.sql",
+    "start": "node dist/index.js",
+    "ingest": "tsx src/data/ingest.ts",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "mcp",
+    "playmcp",
+    "accessibility",
+    "wheelchair",
+    "kakao"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "dotenv": "^17.2.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@11.7.0"
+}
