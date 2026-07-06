@@ -48,6 +48,7 @@ describe("responseBuilder", () => {
       scoredPlaces: [scoredPlace],
       limit: 5,
       fallbackUsed: false,
+      excludeFranchise: false,
       sourceStatus: []
     });
 
@@ -66,6 +67,7 @@ describe("responseBuilder", () => {
       scoredPlaces: [scoredPlace],
       limit: 5,
       fallbackUsed: false,
+      excludeFranchise: false,
       sourceStatus: []
     });
 
@@ -82,10 +84,31 @@ describe("responseBuilder", () => {
       scoredPlaces: [scoredPlace],
       limit: 5,
       fallbackUsed: false,
+      excludeFranchise: false,
       sourceStatus: []
     });
 
     expect(result.recommendations[0]?.attribution).toContain("Google Places 접근성 정보 사용");
     expect(result.recommendations[0]?.attribution).toContain("OpenStreetMap contributors");
+  });
+
+  it("추천 이유와 카카오맵 위치/길찾기 링크를 제공한다", () => {
+    const result = buildRecommendationResponse({
+      inputLocation: "홍대입구역",
+      category: "cafe",
+      radiusM: 1000,
+      origin: { name: "홍대입구역", lat: 37.557192, lng: 126.925381 },
+      scoredPlaces: [scoredPlace],
+      limit: 3,
+      fallbackUsed: false,
+      excludeFranchise: false,
+      sourceStatus: []
+    });
+
+    const rec = result.recommendations[0];
+    expect(rec?.recommendation_reason).toContain("출발지에서");
+    expect(rec?.links.kakao_map).toContain("map.kakao.com");
+    expect(rec?.links.kakao_route).toContain("map.kakao.com/?sName=");
+    expect(rec?.links.kakao_route).not.toContain("/link/to/");
   });
 });

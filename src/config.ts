@@ -23,6 +23,7 @@ export interface AppConfig {
   ktoServiceKey?: string;
   cultureBigdataApiKey?: string;
   useGooglePlaces: boolean;
+  googleFallbackOnly: boolean;
   useOsm: boolean;
   defaultRadiusM: number;
   defaultLimit: number;
@@ -39,9 +40,10 @@ export const loadConfig = (): AppConfig => ({
   ktoServiceKey: process.env.KTO_SERVICE_KEY || undefined,
   cultureBigdataApiKey: process.env.CULTURE_BIGDATA_API_KEY || undefined,
   useGooglePlaces: boolFromEnv(process.env.USE_GOOGLE_PLACES, true),
+  googleFallbackOnly: boolFromEnv(process.env.GOOGLE_FALLBACK_ONLY, true),
   useOsm: boolFromEnv(process.env.USE_OSM, true),
-  defaultRadiusM: intFromEnv(process.env.DEFAULT_RADIUS_M, 800),
-  defaultLimit: intFromEnv(process.env.DEFAULT_LIMIT, 5),
+  defaultRadiusM: intFromEnv(process.env.DEFAULT_RADIUS_M, 1000),
+  defaultLimit: intFromEnv(process.env.DEFAULT_LIMIT, 3),
   dbPath: path.resolve(process.cwd(), process.env.DB_PATH || "./data/accessibility.db"),
   overpassApiUrl: process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter",
   httpTimeoutMs: intFromEnv(process.env.HTTP_TIMEOUT_MS, 8000),

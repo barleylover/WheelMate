@@ -3,8 +3,11 @@ import { KakaoLocalClient } from "../clients/kakaoLocalClient.js";
 import { GooglePlacesClient } from "../clients/googlePlacesClient.js";
 import { OsmOverpassClient } from "../clients/osmOverpassClient.js";
 import { WheelMateDatabase } from "../data/db.js";
+import { cacheKey } from "../utils/cache.js";
 import { getCategoryMapping, normalizeCategory } from "./categoryMapper.js";
 import { knownLocationFallback } from "./geocode.js";
+import { isFranchise, shouldExcludeFranchise } from "./franchise.js";
+import { GOOGLE_CACHE_TTL_MS, shouldUseGoogleFallback } from "./googleFallback.js";
 import { matchPlaces } from "./placeMatcher.js";
 import { rankPlaces } from "./ranking.js";
 import { buildRecommendationResponse } from "./responseBuilder.js";
@@ -139,6 +142,7 @@ export const recommendAccessiblePlaces = async (
   const category = normalizeCategory(input.category);
   const radiusM = clamp(input.radius_m ?? config.defaultRadiusM, 100, 3000);
   const limit = clamp(input.limit ?? config.defaultLimit, 1, 10);
+  const excludeFranchise = shouldExcludeFranchise(input);
   const sourceStatus: SourceStatus[] = [];
   const kakao = new KakaoLocalClient(config);
   const google = new GooglePlacesClient(config);
@@ -154,6 +158,7 @@ export const recommendAccessiblePlaces = async (
       scoredPlaces: [],
       limit,
       fallbackUsed,
+      excludeFranchise,
       sourceStatus: [
         ...sourceStatus,
         status("Geocode", "unavailable", "Unable to resolve location without Kakao result or fallback")
@@ -162,34 +167,11 @@ export const recommendAccessiblePlaces = async (
   }
 
   const mapping = getCategoryMapping(category);
-  const candidateLimit = Math.min(Math.max(limit * 3, limit), 15);
+  // 카카오 2페이지(최대 30건)까지 후보 풀을 넓힌다. 최종 노출은 limit 으로 잘린다.
+  const candidateLimit = Math.min(Math.max(limit * 3, 30), 45);
   let candidates = await searchKakaoCandidates(kakao, origin, category, radiusM, candidateLimit, sourceStatus);
 
-  if (google.enabled) {
-    try {
-      const googleCandidates = await google.searchNearby(
-        origin,
-        mapping.googleIncludedTypes,
-        radiusM,
-        candidateLimit
-      );
-      candidates = mergeCandidates(candidates, googleCandidates);
-      sourceStatus.push(status("Google Places", "ok"));
-    } catch (error) {
-      sourceStatus.push(
-        status("Google Places", "unavailable", error instanceof Error ? error.message : String(error))
-      );
-    }
-  } else {
-    sourceStatus.push(
-      status(
-        "Google Places",
-        "disabled",
-        config.useGooglePlaces ? "GOOGLE_MAPS_API_KEY is not configured" : "USE_GOOGLE_PLACES=false"
-      )
-    );
-  }
-
+  // 무료/커뮤니티 출처(OSM)를 먼저 병합한다. (Google 은 유료라 뒤에서 조건부로만 호출)
   if (osm.enabled) {
     try {
       const osmCandidates = await osm.searchNearby(origin, mapping.osmAmenities, radiusM);
@@ -202,15 +184,79 @@ export const recommendAccessiblePlaces = async (
     sourceStatus.push(status("OSM", "disabled", "USE_OSM=false"));
   }
 
+  // 사용자 추가 요구사항: 프랜차이즈 제외
+  if (excludeFranchise) {
+    candidates = candidates.filter((candidate) => !isFranchise(candidate.name));
+  }
+
+  // 로컬 공공데이터 DB(보조 편의시설)와 Google 응답 캐시를 위해 DB 를 연다.
   const db = new WheelMateDatabase(config.dbPath);
   const dbOk = db.init();
   sourceStatus.push(
     dbOk ? status("Local public-data SQLite", "ok") : status("Local public-data SQLite", "unavailable")
   );
   const supportFacilities = db.querySupportFacilities(origin, radiusM, "all", 50);
+
+  // 1차로 로컬(Kakao/OSM/공공데이터) 근거만으로 랭킹한다.
+  const localScored = rankPlaces(candidates, origin, supportFacilities, radiusM);
+
+  // Google Places(New) accessibilityOptions 는 유료 SKU 이므로 fallback 으로만 아껴서 호출한다.
+  // 로컬 상위 후보에 이미 매장·건물 단위(A/B) 근거가 있으면 호출을 건너뛴다.
+  const localTopGrades = localScored.slice(0, Math.max(limit, 1)).map((item) => item.grade);
+  const useGoogle = google.enabled && shouldUseGoogleFallback(localTopGrades, config.googleFallbackOnly);
+
+  if (useGoogle) {
+    try {
+      const key = cacheKey("google-nearby", {
+        lat: Math.round(origin.lat * 1000) / 1000,
+        lng: Math.round(origin.lng * 1000) / 1000,
+        types: mapping.googleIncludedTypes,
+        radius: radiusM
+      });
+      const cached = db.getCachedJson<PlaceCandidate[]>(key);
+      const googleCandidates =
+        cached ?? (await google.searchNearby(origin, mapping.googleIncludedTypes, radiusM, candidateLimit));
+      if (!cached) {
+        db.putCachedJson(key, "Google Places", googleCandidates, GOOGLE_CACHE_TTL_MS);
+      }
+      candidates = mergeCandidates(candidates, googleCandidates);
+      if (excludeFranchise) {
+        candidates = candidates.filter((candidate) => !isFranchise(candidate.name));
+      }
+      sourceStatus.push(
+        status(
+          "Google Places",
+          "ok",
+          cached
+            ? "캐시 재사용 (유료 API 미호출)"
+            : config.googleFallbackOnly
+              ? "로컬 근거 부족으로 fallback 호출"
+              : "always 모드 호출"
+        )
+      );
+    } catch (error) {
+      sourceStatus.push(
+        status("Google Places", "unavailable", error instanceof Error ? error.message : String(error))
+      );
+    }
+  } else if (google.enabled) {
+    sourceStatus.push(
+      status("Google Places", "skipped", "로컬 근거로 충분하여 유료 API 를 호출하지 않음")
+    );
+  } else {
+    sourceStatus.push(
+      status(
+        "Google Places",
+        "disabled",
+        config.useGooglePlaces ? "GOOGLE_MAPS_API_KEY is not configured" : "USE_GOOGLE_PLACES=false"
+      )
+    );
+  }
+
   db.close();
 
-  const scored = rankPlaces(candidates, origin, supportFacilities, radiusM);
+  // Google 을 호출했을 때만 후보 집합이 바뀌므로 재랭킹하고, 아니면 1차 랭킹을 재사용한다.
+  const scored = useGoogle ? rankPlaces(candidates, origin, supportFacilities, radiusM) : localScored;
 
   return buildRecommendationResponse({
     inputLocation: input.location,
@@ -220,6 +266,7 @@ export const recommendAccessiblePlaces = async (
     scoredPlaces: scored,
     limit,
     fallbackUsed,
+    excludeFranchise,
     sourceStatus
   });
 };

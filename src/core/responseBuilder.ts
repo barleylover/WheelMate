@@ -1,5 +1,5 @@
 import { getCategoryMapping } from "./categoryMapper.js";
-import { confirmedAccessibilityLabels, unknownAccessibilityItems } from "./evidence.js";
+import { confirmedAccessibilityLabels, recommendationReason, unknownAccessibilityItems } from "./evidence.js";
 import { kakaoMapLink, kakaoRouteLink } from "./links.js";
 import type {
   Category,
@@ -68,10 +68,12 @@ export const buildRecommendationResponse = (params: {
   scoredPlaces: ScoredPlace[];
   limit: number;
   fallbackUsed: boolean;
+  excludeFranchise: boolean;
   sourceStatus: SourceStatus[];
 }): RecommendationResponse => {
   const recommendations = params.scoredPlaces.slice(0, params.limit).map((scored, index) => {
     const confirmed = confirmedAccessibilityLabels(scored.place.evidence);
+    const supportNames = scored.supportFacilitiesNearby.map((facility) => facility.name);
     return {
       rank: index + 1,
       name: scored.place.name,
@@ -82,6 +84,7 @@ export const buildRecommendationResponse = (params: {
       score: scored.score,
       confirmed_accessibility:
         confirmed.length > 0 ? confirmed : ["접근성 정보가 확인되지 않음"],
+      recommendation_reason: recommendationReason(scored.grade, confirmed, scored.distanceM, supportNames),
       support_facilities_nearby: scored.supportFacilitiesNearby.map((facility) => ({
         type: facility.type,
         name: facility.name,
@@ -91,8 +94,8 @@ export const buildRecommendationResponse = (params: {
       unknown_or_unverified: unknownAccessibilityItems(),
       cautions: cautionsFor(scored),
       links: {
-        kakao_map: kakaoMapLink(scored.place.name, scored.place.lat, scored.place.lng),
-        kakao_route: kakaoRouteLink(scored.place.name, scored.place.lat, scored.place.lng),
+        kakao_map: kakaoMapLink(scored.place.name, scored.place.kakaoPlaceUrl),
+        kakao_route: kakaoRouteLink(params.inputLocation, scored.place.name),
         ...(scored.place.googleMapsUri ? { google_maps: scored.place.googleMapsUri } : {})
       },
       attribution: attributionRows(scored)
@@ -104,10 +107,13 @@ export const buildRecommendationResponse = (params: {
     recommendations.length === 0
       ? emptyMessage(params.inputLocation, params.category, params.sourceStatus, params.fallbackUsed)
       : [
-          `${params.inputLocation} 근처 ${label} 후보를 접근성 근거 기준으로 정리했어요.`,
+          `${params.inputLocation} 근처 ${label} 후보를 접근성 근거 기준으로 정리했어요.${
+            params.excludeFranchise ? " (프랜차이즈는 제외했어요.)" : ""
+          }`,
           "",
           ...recommendations.flatMap((item) => [
             `${item.rank}순위. ${item.name}`,
+            `- 추천 이유: ${item.recommendation_reason}`,
             `- 거리: 약 ${item.distance_m}m`,
             `- 접근성 등급: ${item.accessibility_grade}`,
             `- 확인된 접근성 정보: ${item.confirmed_accessibility.join(", ")}`,
@@ -119,8 +125,8 @@ export const buildRecommendationResponse = (params: {
                 : "주변 보조 편의시설 정보 없음"
             }`,
             `- 확인되지 않은 정보: ${item.unknown_or_unverified.join(", ")}`,
+            `- 카카오맵 위치: ${item.links.kakao_map}`,
             `- 카카오맵 길찾기: ${item.links.kakao_route}`,
-            ...(item.links.google_maps ? [`- Google 지도: ${item.links.google_maps}`] : []),
             ""
           ]),
           "공공/지도 데이터 기준으로 확인된 정보이며, 매장 구조나 운영 상황은 바뀔 수 있으니 방문 전 전화 확인을 권장드려요."
@@ -130,7 +136,8 @@ export const buildRecommendationResponse = (params: {
     query_interpretation: {
       location: params.inputLocation,
       category: params.category,
-      radius_m: params.radiusM
+      radius_m: params.radiusM,
+      exclude_franchise: params.excludeFranchise
     },
     origin: params.origin,
     recommendations,

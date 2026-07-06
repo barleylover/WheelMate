@@ -91,6 +91,43 @@ export class WheelMateDatabase {
         facility.raw ? JSON.stringify(facility.raw) : null
       );
   }
+
+  getCachedJson<T>(key: string): T | undefined {
+    if (!this.db) {
+      return undefined;
+    }
+    const row = this.db
+      .prepare("SELECT response_json, expires_at FROM api_cache WHERE cache_key = ?")
+      .get(key) as { response_json?: string; expires_at?: string } | undefined;
+    if (!row?.response_json || !row.expires_at) {
+      return undefined;
+    }
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      return undefined;
+    }
+    try {
+      return JSON.parse(row.response_json) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  putCachedJson(key: string, provider: string, value: unknown, ttlMs: number): void {
+    if (!this.db) {
+      return;
+    }
+    const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO api_cache (cache_key, provider, response_json, expires_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(cache_key) DO UPDATE SET
+           provider = excluded.provider,
+           response_json = excluded.response_json,
+           expires_at = excluded.expires_at`
+      )
+      .run(key, provider, JSON.stringify(value), expiresAt);
+  }
 }
 
 const normalizeSupportFacility = (row: Record<string, unknown>): SupportFacility => ({

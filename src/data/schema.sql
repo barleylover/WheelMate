@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS accessibility_evidence (
       'osm_wheelchair',
       'bf_certified',
       'disability_facility',
+      'entrance_ramp',
+      'threshold_removed',
+      'elevator',
+      'building_accessible_restroom',
       'accessible_restroom_nearby',
       'wheelchair_charger_nearby',
       'provider_unavailable'

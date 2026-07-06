@@ -42,13 +42,16 @@ PUBLIC_DATA_SERVICE_KEY=
 KTO_SERVICE_KEY=
 CULTURE_BIGDATA_API_KEY=
 USE_GOOGLE_PLACES=true
+GOOGLE_FALLBACK_ONLY=true
 USE_OSM=true
-DEFAULT_RADIUS_M=800
-DEFAULT_LIMIT=5
+DEFAULT_RADIUS_M=1000
+DEFAULT_LIMIT=3
 DB_PATH=./data/accessibility.db
 ```
 
 키가 없거나 일부 API가 실패해도 서버 전체가 종료되지 않고, 해당 출처는 `source_status`에 `disabled` 또는 `unavailable`로 표시됩니다.
+
+Google Places(New) `accessibilityOptions`는 유료 SKU이므로 `GOOGLE_FALLBACK_ONLY=true`(기본값)에서는 로컬(Kakao/OSM/공공데이터) 근거만으로 상위 후보에 매장·건물 단위(A/B 등급) 접근성이 확인되지 않을 때에만 fallback으로 호출하고, 응답은 `api_cache`에 캐시합니다. 매 요청마다 호출하려면 `GOOGLE_FALLBACK_ONLY=false`로 둡니다.
 
 ## 실행
 
@@ -79,8 +82,8 @@ pnpm run dev -- --sample
   "query": "나 지금 홍대입구역인데 휠체어로 들어갈 수 있는 카페 추천해줘",
   "location": "홍대입구역",
   "category": "cafe",
-  "radius_m": 800,
-  "limit": 5,
+  "radius_m": 1000,
+  "limit": 3,
   "preferences": ["장애인화장실", "입구중요"]
 }
 ```

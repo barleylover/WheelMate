@@ -21,6 +21,10 @@ export type EvidenceType =
   | "osm_wheelchair"
   | "bf_certified"
   | "disability_facility"
+  | "entrance_ramp"
+  | "threshold_removed"
+  | "elevator"
+  | "building_accessible_restroom"
   | "accessible_restroom_nearby"
   | "wheelchair_charger_nearby"
   | "provider_unavailable";
@@ -49,6 +53,7 @@ export interface PlaceCandidate {
   source: string;
   sourcePlaceId?: string;
   googleMapsUri?: string;
+  kakaoPlaceUrl?: string;
   raw?: unknown;
   evidence: AccessibilityEvidence[];
 }
@@ -99,6 +104,7 @@ export interface RecommendAccessiblePlacesInput {
   radius_m?: number;
   limit?: number;
   preferences?: string[];
+  exclude_franchise?: boolean;
 }
 
 export interface RecommendationResponse {
@@ -106,6 +112,7 @@ export interface RecommendationResponse {
     location: string;
     category: Category;
     radius_m: number;
+    exclude_franchise: boolean;
   };
   origin: GeoPoint;
   recommendations: Array<{
@@ -117,6 +124,7 @@ export interface RecommendationResponse {
     accessibility_grade: AccessibilityGrade;
     score: number;
     confirmed_accessibility: string[];
+    recommendation_reason: string;
     support_facilities_nearby: Array<{
       type: SupportFacilityType;
       name: string;

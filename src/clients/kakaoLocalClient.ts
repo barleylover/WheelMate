@@ -10,6 +10,7 @@ interface KakaoLocalDocument {
   phone?: string;
   address_name?: string;
   road_address_name?: string;
+  place_url?: string;
   x?: string;
   y?: string;
 }
@@ -87,15 +88,38 @@ export class KakaoLocalClient {
     radiusM: number,
     limit = 10
   ): Promise<PlaceCandidate[]> {
-    const response = await this.get("/v2/local/search/category.json", {
-      category_group_code: categoryGroupCode,
-      x: lng,
-      y: lat,
-      radius: radiusM,
-      size: Math.min(limit, 15),
-      sort: "distance"
-    });
-    return (response.documents ?? []).flatMap((doc) => this.toPlace(doc));
+    // 카카오 카테고리 검색은 1회 호출당 최대 15건이므로, 최대 2페이지(최대 30건)까지 수집한다.
+    const pageSize = 15;
+    const maxPages = 2;
+    const pagesNeeded = Math.min(maxPages, Math.max(1, Math.ceil(limit / pageSize)));
+    const results: PlaceCandidate[] = [];
+    const seen = new Set<string>();
+
+    for (let page = 1; page <= pagesNeeded; page += 1) {
+      const response = await this.get("/v2/local/search/category.json", {
+        category_group_code: categoryGroupCode,
+        x: lng,
+        y: lat,
+        radius: radiusM,
+        size: pageSize,
+        page,
+        sort: "distance"
+      });
+      const docs = response.documents ?? [];
+      for (const doc of docs) {
+        for (const place of this.toPlace(doc)) {
+          if (!seen.has(place.id)) {
+            seen.add(place.id);
+            results.push(place);
+          }
+        }
+      }
+      if (docs.length < pageSize || results.length >= limit) {
+        break;
+      }
+    }
+
+    return results.slice(0, limit);
   }
 
   async resolveLocation(query: string): Promise<GeoPoint | undefined> {
@@ -134,6 +158,7 @@ export class KakaoLocalClient {
         phone: doc.phone,
         source: "Kakao Local",
         sourcePlaceId: doc.id,
+        kakaoPlaceUrl: doc.place_url,
         raw: doc,
         evidence: []
       }
