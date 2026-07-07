@@ -61,6 +61,70 @@ FOOD_PREFERENCES = {
     "돈가스": ("돈가스", "돈까스", "카레/돈가스"),
     "냉면": ("냉면", "밀면"),
     "분식": ("분식", "김밥", "만두", "떡볶이"),
+    "마라탕": ("마라탕", "마라", "훠궈", "중식"),
+}
+
+SEOCHO_LOCATION_FALLBACKS = {
+    "방배역": {
+        "name": "방배역 2호선",
+        "address": "서울 서초구 방배동",
+        "lat": 37.481426,
+        "lon": 126.997596,
+    },
+    "양재역": {
+        "name": "양재역 3호선",
+        "address": "서울 서초구 남부순환로 지하 2585",
+        "lat": 37.4845768119567,
+        "lon": 127.034164133808,
+    },
+    "교대역": {
+        "name": "교대역",
+        "address": "서울 서초구 서초동",
+        "lat": 37.493961,
+        "lon": 127.014667,
+    },
+    "서초역": {
+        "name": "서초역 2호선",
+        "address": "서울 서초구 서초동",
+        "lat": 37.491897,
+        "lon": 127.007917,
+    },
+    "고속터미널역": {
+        "name": "고속터미널역",
+        "address": "서울 서초구 반포동",
+        "lat": 37.50481,
+        "lon": 127.004943,
+    },
+    "이수역": {
+        "name": "이수역",
+        "address": "서울 동작구/서초구",
+        "lat": 37.486789,
+        "lon": 126.982203,
+    },
+    "사당역": {
+        "name": "사당역",
+        "address": "서울 동작구/서초구",
+        "lat": 37.47653,
+        "lon": 126.981685,
+    },
+    "남부터미널역": {
+        "name": "남부터미널역 3호선",
+        "address": "서울 서초구 서초동",
+        "lat": 37.485013,
+        "lon": 127.016189,
+    },
+    "신논현역": {
+        "name": "신논현역",
+        "address": "서울 서초구/강남구",
+        "lat": 37.504598,
+        "lon": 127.02506,
+    },
+    "내방역": {
+        "name": "내방역 7호선",
+        "address": "서울 서초구 방배동",
+        "lat": 37.487655,
+        "lon": 126.993541,
+    },
 }
 
 
@@ -96,7 +160,7 @@ def load_env_key(env_path: Path) -> str:
     if env_key:
         return env_key
     if not env_path.exists():
-        raise SystemExit(f"API key env file not found: {env_path}")
+        return ""
     for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -104,7 +168,7 @@ def load_env_key(env_path: Path) -> str:
         name, value = line.split("=", 1)
         if name.strip() == "KAKAO_REST_API_KEY":
             return value.strip().strip("\"'")
-    raise SystemExit(f"KAKAO_REST_API_KEY not found in {env_path}")
+    return ""
 
 
 def to_float(value: Any) -> float | None:
@@ -285,6 +349,10 @@ def parse_query(
 
     location = explicit_location.strip()
     if not location:
+        station_match = re.search(r"([가-힣A-Za-z0-9]+역)", text)
+        if station_match:
+            location = station_match.group(1).strip(" \"'“”")
+    if not location:
         patterns = [
             r"(.+?역)\s*(?:근처|주변|인근|에서)",
             r"(.+?)\s*(?:근처|주변|인근|에서)",
@@ -299,13 +367,29 @@ def parse_query(
     return location, category, preference
 
 
-def resolve_location(client: KakaoLocalClient, location: str) -> dict[str, Any]:
+def fallback_location(location: str) -> dict[str, Any] | None:
+    compact = normalize_space(location).replace(" ", "")
+    for key, value in SEOCHO_LOCATION_FALLBACKS.items():
+        if key.replace(" ", "") in compact or compact in key.replace(" ", ""):
+            return {**value, "raw": {"source": "offline_fallback"}}
+    return None
+
+
+def resolve_location(client: KakaoLocalClient | None, location: str) -> dict[str, Any]:
     category = "SW8" if "역" in location else ""
-    docs = client.keyword_search(location, category_group_code=category, size=10)
-    if not docs and category:
-        docs = client.keyword_search(location, size=10)
+    docs = []
+    if client is not None:
+        docs = client.keyword_search(location, category_group_code=category, size=10)
+        if not docs and category:
+            docs = client.keyword_search(location, size=10)
     if not docs:
-        raise SystemExit(f"위치를 찾지 못했습니다: {location}")
+        fallback = fallback_location(location)
+        if fallback:
+            return fallback
+        raise RuntimeError(
+            f"위치를 찾지 못했습니다: {location}. "
+            "KAKAO_REST_API_KEY를 서버 환경변수로 등록하거나 --location에 서초구 주요 역명을 입력하세요."
+        )
 
     def rank(doc: dict[str, Any]) -> tuple[int, int]:
         address = (doc.get("road_address_name") or doc.get("address_name") or "")
@@ -503,7 +587,7 @@ def load_facility_geocode_cache(cache_path: Path) -> dict[str, dict[str, str]]:
 
 
 def geocode_facilities_for_dongs(
-    client: KakaoLocalClient,
+    client: KakaoLocalClient | None,
     facility_csv: Path,
     cache_path: Path,
     dongs: set[str],
@@ -523,7 +607,7 @@ def geocode_facilities_for_dongs(
             lat = to_float(cached.get("lat"))
             lon = to_float(cached.get("lon"))
             status = cached.get("geocode_status", "")
-        elif new_count < max_new_geocodes:
+        elif client is not None and new_count < max_new_geocodes:
             query = row.get("소재지 주소", "")
             lat = lon = None
             status = "not_found"
@@ -822,7 +906,8 @@ def render_checklist(
 
 
 def build_checklist(args: argparse.Namespace) -> str:
-    client = KakaoLocalClient(load_env_key(Path(args.env)))
+    api_key = load_env_key(Path(args.env))
+    client = KakaoLocalClient(api_key) if api_key else None
     location_query, category, preference = parse_query(args.query, args.location, args.category)
     origin = resolve_location(client, location_query)
     raw_places = load_places(Path(args.stores), category, origin, args.radius)
@@ -934,8 +1019,6 @@ def main() -> None:
     for input_path in (args.stores, args.toilets, args.facilities):
         if not Path(input_path).exists():
             raise SystemExit(f"Required file not found: {input_path}")
-    if not os.environ.get("KAKAO_REST_API_KEY") and not Path(args.env).exists():
-        raise SystemExit(f"Required file not found: {args.env}")
 
     checklist = build_checklist(args)
     sys.stdout.write(checklist)

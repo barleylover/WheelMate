@@ -132,7 +132,7 @@ def handle_tools_call(request_id: Any, params: dict[str, Any]) -> dict[str, Any]
 
     try:
         markdown = build_checklist(checklist_args(arguments))
-    except Exception as exc:
+    except BaseException as exc:
         return response(
             request_id,
             {
