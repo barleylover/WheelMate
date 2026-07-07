@@ -10,4 +10,5 @@ data/*.db
 data/*.db-*
 data/import/*
 !data/import/README.md
+!data/import/wheelchair_chargers.csv
 logs/

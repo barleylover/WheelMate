@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { TextDecoder } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "../../config.js";
 import { applySchema, openDatabase } from "../db.js";
@@ -44,6 +45,20 @@ interface SupportFacilityCsvOptions {
 
 function importPath(filename: string): string {
   return path.join(process.cwd(), "data", "import", filename);
+}
+
+function replacementCount(text: string): number {
+  return text.split("\uFFFD").length - 1;
+}
+
+export function decodeCsvBuffer(buffer: Buffer): string {
+  const utf8 = new TextDecoder("utf-8").decode(buffer);
+  const utf8BadCount = replacementCount(utf8.slice(0, 4096));
+  if (utf8BadCount === 0) return utf8;
+
+  const eucKr = new TextDecoder("euc-kr").decode(buffer);
+  const eucKrBadCount = replacementCount(eucKr.slice(0, 4096));
+  return eucKrBadCount < utf8BadCount ? eucKr : utf8;
 }
 
 function parseCsv(text: string): Array<Record<string, string>> {
@@ -93,7 +108,7 @@ function parseCsv(text: string): Array<Record<string, string>> {
 function readCsv(filename: string): Array<Record<string, string>> {
   const file = importPath(filename);
   if (!fs.existsSync(file)) return [];
-  return parseCsv(fs.readFileSync(file, "utf8"));
+  return parseCsv(decodeCsvBuffer(fs.readFileSync(file)));
 }
 
 function pick(row: Record<string, string>, fields: string[] = []): string | undefined {
@@ -124,6 +139,7 @@ export function loadPublicEvidenceCsv(options: PublicEvidenceCsvOptions): number
   const rows = readCsv(options.filename);
   if (rows.length === 0) return 0;
   return withDatabase((db) => {
+    db.prepare("DELETE FROM public_accessibility_evidence WHERE source = ?").run(options.source);
     const stmt = db.prepare(
       `INSERT INTO public_accessibility_evidence
         (name, address, lat, lng, source, source_family, evidence_level, evidence_type, value, detail, confidence, raw_json)
@@ -161,6 +177,7 @@ export function loadSupportFacilityCsv(options: SupportFacilityCsvOptions): numb
   const rows = readCsv(options.filename);
   if (rows.length === 0) return 0;
   return withDatabase((db) => {
+    db.prepare("DELETE FROM support_facilities WHERE type = ? AND source = ?").run(options.type, options.source);
     const stmt = db.prepare(
       `INSERT INTO support_facilities
         (type, name, address, lat, lng, opening_hours, phone, source, raw_json)

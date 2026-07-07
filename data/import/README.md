@@ -20,3 +20,6 @@ Recognized filenames:
 - `museum_standard.csv`
 
 Do not commit downloaded large data files unless the team explicitly decides to version them.
+
+`public_restrooms.csv` must include latitude/longitude columns to support nearby-distance lookup.
+Public restroom exports that only contain addresses are skipped until they are geocoded.
