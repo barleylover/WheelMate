@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+data/*.db
+data/*.db-*
+data/import/*
+!data/import/README.md
+logs/
