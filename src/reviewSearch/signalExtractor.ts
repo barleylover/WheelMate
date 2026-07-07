@@ -14,10 +14,11 @@ const STRONG_POSITIVE: PatternSpec[] = [
   { pattern: /(?:전동)?휠체어.{0,14}(?:들어갈 수|갈 수|이용할 수|탈 수)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,18}(?:손님|고객|이용객).{0,20}(?:매장\s*)?이용\s*(?:잘|가능|편)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,20}(?:오기|방문|이동|접근|입장).{0,10}(?:(?<!불)편한|(?<!불)편해|(?<!불)편함|(?<!불)편하게|무리\s*없이)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,14}(?:(?<!불)편하게|무리\s*없이|충분히).{0,14}(?:접근|진입|이동|식사|이용|입장)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:무장애|배리어프리|베리어프리|barrier\s*free)/gi, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:단차|문턱|턱)(?:이|가)?\s*(?:없음|없고|없이|없는|낮음|낮아)/g, polarity: "positive", strength: "strong", type: "entrance_step" },
   { pattern: /(?:계단|스텝)(?:이|가)?\s*(?:없음|없고|없이|없는)/g, polarity: "positive", strength: "strong", type: "stairs" },
-  { pattern: /(?:경사로|슬로프)(?:가|는)?\s*(?:있음|있는|있어서|설치|구비)/g, polarity: "positive", strength: "strong", type: "ramp" },
+  { pattern: /(?:경사로|슬로프)(?:가|는)?\s*(?:있음|있는|있어서|있어|설치|구비)/g, polarity: "positive", strength: "strong", type: "ramp" },
   { pattern: /(?:장애인|다목적|무장애)\s*화장실(?:이|가)?\s*(?:있음|있는|있어서|가능|구비)/g, polarity: "positive", strength: "strong", type: "restroom" },
   { pattern: /화장실.{0,12}(?:휠체어|장애인).{0,8}(?:가능|이용)/g, polarity: "positive", strength: "strong", type: "restroom" },
   { pattern: /장애인\s*주차\s*(?:가능|있음|있는)/g, polarity: "positive", strength: "strong", type: "unknown" },
@@ -33,7 +34,7 @@ const WEAK_POSITIVE: PatternSpec[] = [
 ];
 
 const STRONG_NEGATIVE: PatternSpec[] = [
-  { pattern: /(?:전동)?휠체어.{0,12}(?:불가|어렵|힘들|무리|못\s*들어)/g, polarity: "negative", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,12}(?:불가|어렵|힘들|무리(?!\s*없이)|못\s*들어)/g, polarity: "negative", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:엘리베이터|엘베|승강기)(?:가|는)?\s*(?:없음|없는|없어서|없어)/g, polarity: "negative", strength: "strong", type: "elevator" },
   { pattern: /계단(?:만|으로만)\s*(?:있음|이용)|계단.{0,8}(?:올라가야|올라가|이용해야)/g, polarity: "negative", strength: "strong", type: "stairs" },
   { pattern: /(?:문턱|단차|턱)(?:이|가)?\s*(?:높음|높고|높아|있음|있는|있어서)/g, polarity: "negative", strength: "strong", type: "entrance_step" },

@@ -59,6 +59,25 @@ function preferenceBonus(
   return bonus;
 }
 
+function contentSearchPreferences(preferences: string[]): string[] {
+  const generic = new Set(["조용한", "분위기", "분위기좋은", "넓은", "맛있는", "좋은"]);
+  return preferences
+    .map((preference) => preference.trim())
+    .filter((preference) => preference.length >= 2 && !generic.has(preference))
+    .slice(0, 3);
+}
+
+function placeMatchesContentPreferences(place: { name: string; category: string | Category; searchAliases?: string[]; discoveryEvidence?: Array<{ title: string; snippet: string }> }, preferences: string[]): boolean {
+  if (preferences.length === 0) return true;
+  const text = [
+    place.name,
+    String(place.category),
+    ...(place.searchAliases ?? []),
+    ...(place.discoveryEvidence ?? []).flatMap((evidence) => [evidence.title, evidence.snippet])
+  ].join(" ");
+  return preferences.some((preference) => text.includes(preference));
+}
+
 export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
@@ -67,6 +86,8 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const radiusM = input.radius_m ?? config.defaultRadiusM;
   const limit = input.limit ?? config.defaultLimit;
   const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
+  const contentPreferences = contentSearchPreferences(unsupportedPreferences);
+  const searchPreferences = [...preferences, ...contentPreferences];
   const interpretation = {
     location: input.location,
     category,
@@ -88,19 +109,23 @@ export async function recommendAccessiblePlacesByReviewSearch(
       location: input.location,
       category,
       radiusM,
-      preferences,
+      preferences: searchPreferences,
       limit: Math.min(limit, config.maxPlaceCandidates)
     }),
     kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit)
   ]);
-  const candidates = mergePlaceCandidates(discoveredCandidates, localCandidates).slice(
+  const mergedCandidates = mergePlaceCandidates(discoveredCandidates, localCandidates);
+  const preferenceMatchedCandidates = contentPreferences.length > 0
+    ? mergedCandidates.filter((place) => placeMatchesContentPreferences(place, contentPreferences))
+    : mergedCandidates;
+  const candidates = preferenceMatchedCandidates.slice(
     0,
     Math.min(Math.max(limit + 2, 1), 7)
   );
 
   const ranked: RankedPlace[] = [];
   for (const place of candidates) {
-    const review = await reviewSearch.analyzePlace(place, input.location, preferences, 5);
+    const review = await reviewSearch.analyzePlace(place, input.location, searchPreferences, 5);
     const supportFacilities = publicData.findNearbySupportFacilities(
       { lat: place.lat, lng: place.lng },
       "all",

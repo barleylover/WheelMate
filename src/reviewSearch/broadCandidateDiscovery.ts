@@ -167,6 +167,7 @@ function cleanSearchText(value: string): string {
   return value
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/\s[-–—]\s/g, " ")
+    .replace(/\.{2,}/g, " ")
     .replace(/[|｜:;!?]+/g, " ")
     .replace(/[<>{}\[\]《》“”"']/g, " ")
     .replace(/\s+/g, " ")
@@ -206,12 +207,29 @@ export function buildBroadDiscoveryQueries(
   location: string,
   category: Category,
   preferences: string[] = [],
-  maxQueries = 4
+  maxQueries = 8
 ): string[] {
   const categoryLabel = categoryKeyword(category) || "장소";
+  const categoryAliases =
+    category === "restaurant"
+      ? ["음식점", "식당", "맛집"]
+      : category === "cafe"
+        ? ["카페"]
+        : [categoryLabel];
   const preferenceTerms = preferences.includes("장애인화장실") ? ["장애인 화장실"] : [];
+  const contentPreferences = preferences.filter((preference) => !["장애인화장실", "충전기근처", "입구중요", "계단회피", "엘리베이터"].includes(preference));
   return unique([
     `${location} ${categoryLabel} 휠체어`,
+    `${location} 휠체어 ${categoryLabel}`,
+    ...categoryAliases.flatMap((alias) => [
+      `${location} ${alias} 휠체어`,
+      `${location} 휠체어 ${alias}`
+    ]),
+    ...contentPreferences.flatMap((term) => [
+      `${location} ${term} 휠체어`,
+      `${location} 휠체어 ${term}`,
+      `${location} ${term} ${categoryLabel}`
+    ]),
     `${location} ${categoryLabel} 휠체어 접근성`,
     `${location} ${categoryLabel} 문턱 경사로`,
     `${location} ${categoryLabel} 배리어프리`,
@@ -229,13 +247,17 @@ export function extractBroadCandidateTerms(
   const title = cleanSearchText(result.title);
   const snippet = cleanSearchText(result.snippet);
   const splitParts = title.split(/\s*[-–—/,·•]\s*/).filter(Boolean);
-  const phraseCandidates = [
-    title,
-    ...splitParts,
+  const specificCandidates = [
     ...Array.from(rawTitle.matchAll(/\[([^\]]{2,40})\]/g)).flatMap((match) => (match[1] ?? "").split(/[\/|｜]/)),
     ...Array.from(rawTitle.matchAll(/['"‘’“”]([^'"‘’“”]{2,24})['"‘’“”]/g)).map((match) => match[1] ?? ""),
     ...Array.from(`${title} ${snippet}`.matchAll(/(?:카페|식당|음식점|맛집)\s*([가-힣A-Za-z0-9&().·\-\s]{2,18})/g)).map((match) => match[1] ?? ""),
-    ...Array.from(`${title} ${snippet}`.matchAll(/([가-힣A-Za-z0-9&().·\-\s]{2,18})\s*(?:카페|식당|음식점)/g)).map((match) => match[1] ?? "")
+    ...Array.from(`${title} ${snippet}`.matchAll(/([가-힣A-Za-z0-9&().·\-\s]{2,18})\s*(?:카페|식당|음식점)/g)).map((match) => match[1] ?? ""),
+    ...Array.from(title.matchAll(/(?:방문한|가능한|맛집)\s*([가-힣A-Za-z0-9&().·\-\s]{2,18})/g)).map((match) => match[1] ?? "")
+  ];
+  const phraseCandidates = [
+    ...specificCandidates,
+    title,
+    ...splitParts
   ];
   return unique(
     phraseCandidates
@@ -280,7 +302,10 @@ function categoryMatches(place: PlaceCandidate, category: Category): boolean {
   const text = `${place.category} ${place.name}`;
   if (category === "any") return true;
   if (category === "cafe") return /카페|커피|디저트|베이커리/.test(text);
-  if (category === "restaurant") return /음식점|식당|한식|중식|일식|양식|분식|고기|레스토랑|맛집/.test(text);
+  if (category === "restaurant") {
+    if (/카페|커피|디저트|베이커리|제과|아이스크림|빙수/.test(text)) return false;
+    return /음식점|식당|한식|중식|일식|양식|분식|고기|레스토랑|맛집/.test(text);
+  }
   if (category === "museum") return /박물관|미술관|전시/.test(text);
   if (category === "culture") return /문화|공연|전시|박물관|미술관|도서관/.test(text);
   return true;
@@ -288,6 +313,44 @@ function categoryMatches(place: PlaceCandidate, category: Category): boolean {
 
 function placeKey(place: PlaceCandidate): string {
   return place.sourcePlaceId || `${place.name}:${place.roadAddress ?? place.address ?? ""}`.replace(/\s+/g, "");
+}
+
+function broadLocationToken(location: string): string | null {
+  const compact = location.replace(/\s+/g, "");
+  const known = new Map([
+    ["제주도", "제주"],
+    ["제주", "제주"],
+    ["제주특별자치도", "제주"],
+    ["서울", "서울"],
+    ["서울시", "서울"],
+    ["부산", "부산"],
+    ["대구", "대구"],
+    ["인천", "인천"],
+    ["광주", "광주"],
+    ["대전", "대전"],
+    ["울산", "울산"],
+    ["세종", "세종"],
+    ["경기도", "경기"],
+    ["강원도", "강원"],
+    ["충청북도", "충북"],
+    ["충북", "충북"],
+    ["충청남도", "충남"],
+    ["충남", "충남"],
+    ["전라북도", "전북"],
+    ["전북", "전북"],
+    ["전라남도", "전남"],
+    ["전남", "전남"],
+    ["경상북도", "경북"],
+    ["경북", "경북"],
+    ["경상남도", "경남"],
+    ["경남", "경남"]
+  ]);
+  return known.get(compact) ?? null;
+}
+
+function placeMatchesBroadLocation(place: PlaceCandidate, locationToken: string): boolean {
+  const text = `${place.name} ${place.address ?? ""} ${place.roadAddress ?? ""}`;
+  return text.includes(locationToken);
 }
 
 export function mergePlaceCandidates(primary: PlaceCandidate[], secondary: PlaceCandidate[]): PlaceCandidate[] {
@@ -314,6 +377,36 @@ function uniqueEvidence(evidence: ReviewEvidence[]): ReviewEvidence[] {
   return evidence.filter((item) => {
     const key = `${item.source}:${item.link}:${item.snippet}`;
     if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function evidenceKey(evidence: ReviewEvidence): string {
+  return `${evidence.source}:${evidence.link}:${evidence.title}`;
+}
+
+function compactText(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function evidencePlaceRelevance(place: PlaceCandidate, evidence: ReviewEvidence, term: string): number {
+  const evidenceText = compactText(`${evidence.title} ${evidence.snippet}`);
+  const placeName = compactText(place.name);
+  const lookupTerm = compactText(term);
+  let score = 0;
+  if (placeName && evidenceText.includes(placeName)) score += 10 + Math.min(placeName.length, 12) / 10;
+  if (lookupTerm.length >= 3 && evidenceText.includes(lookupTerm) && placeName.includes(lookupTerm)) score += 9;
+  if (lookupTerm && evidenceText.includes(lookupTerm)) score += 4;
+  if (place.roadAddress || place.address) score += 1;
+  return score;
+}
+
+function uniqueLookupPairs(pairs: Array<{ term: string; evidence: ReviewEvidence }>): Array<{ term: string; evidence: ReviewEvidence }> {
+  const seen = new Set<string>();
+  return pairs.filter((pair) => {
+    const key = compactText(pair.term);
+    if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
@@ -358,29 +451,45 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
       if (!evidence) return [];
       return extractBroadCandidateTerms(result, input.location, input.category).map((term) => ({ term, evidence }));
     })
-    .slice(0, 60);
-  const lookupPairs = termEvidencePairs
-    .flatMap(({ term, evidence }) => buildKakaoLookupTerms(term).map((lookupTerm) => ({ term: lookupTerm, evidence })))
-    .slice(0, 160);
+    .slice(0, 140);
+  const lookupPairs = uniqueLookupPairs(
+    termEvidencePairs.flatMap(({ term, evidence }) =>
+      buildKakaoLookupTerms(term).map((lookupTerm) => ({ term: lookupTerm, evidence }))
+    )
+  ).slice(0, 220);
 
   const discovered: PlaceCandidate[] = [];
+  const locationToken = broadLocationToken(input.location);
+  const usedEvidence = new Set<string>();
   for (const { term, evidence } of lookupPairs) {
     if (discovered.length >= input.limit) break;
-    const places = await input.kakaoLocal.keywordSearch(
-      `${input.location} ${term}`,
-      input.origin.lng,
-      input.origin.lat,
-      input.radiusM,
-      2
-    );
+    const key = evidenceKey(evidence);
+    if (usedEvidence.has(key)) continue;
+    const lookupQueries = locationToken
+      ? unique([`${input.location} ${term}`, `${locationToken} ${term}`, term])
+      : [`${input.location} ${term}`];
+    const places = (
+      await Promise.all(
+        lookupQueries.map((query) =>
+          locationToken
+            ? input.kakaoLocal.keywordSearch(query, undefined, undefined, undefined, 3)
+            : input.kakaoLocal.keywordSearch(query, input.origin.lng, input.origin.lat, input.radiusM, 2)
+        )
+      )
+    ).flat();
     const matched = places
       .filter((place) => categoryMatches(place, input.category))
+      .filter((place) => !locationToken || placeMatchesBroadLocation(place, locationToken))
+      .filter((place) => !locationToken || evidencePlaceRelevance(place, evidence, term) >= 8)
+      .sort((a, b) => evidencePlaceRelevance(b, evidence, term) - evidencePlaceRelevance(a, evidence, term))
+      .slice(0, 1)
       .map((place) => ({
         ...place,
         searchAliases: unique([term, ...(place.searchAliases ?? [])]),
         discoveryEvidence: uniqueEvidence([evidence, ...(place.discoveryEvidence ?? [])])
       }));
     discovered.push(...matched);
+    if (matched.length > 0) usedEvidence.add(key);
   }
   return mergePlaceCandidates(discovered, []).slice(0, input.limit);
 }

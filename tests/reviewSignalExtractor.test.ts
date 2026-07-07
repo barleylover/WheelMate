@@ -26,4 +26,14 @@ describe("extractSignalsFromText", () => {
     expect(signals.some((signal) => signal.polarity === "positive")).toBe(false);
     expect(signals.some((signal) => signal.polarity === "ambiguous" && signal.type === "wheelchair_direct")).toBe(true);
   });
+
+  it("recognizes Jeju restaurant accessibility phrases", () => {
+    const signals = extractSignalsFromText(
+      "경사로가 있어 휠체어로 편하게 접근할 수 있습니다. 휠체어를 타신 분들도 무리없이 식사를 할 수있는 곳이라고 해요."
+    );
+
+    expect(signals.some((signal) => signal.polarity === "positive" && signal.type === "ramp")).toBe(true);
+    expect(signals.some((signal) => signal.polarity === "positive" && signal.type === "wheelchair_direct")).toBe(true);
+    expect(signals.some((signal) => signal.polarity === "negative" && signal.type === "wheelchair_direct")).toBe(false);
+  });
 });
