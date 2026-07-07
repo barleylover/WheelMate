@@ -24,6 +24,16 @@ describe("extractSignalsFromText", () => {
     );
   });
 
+  it("does not treat parking unavailable as wheelchair unavailable", () => {
+    const signals = extractSignalsFromText("출입구 휠체어 이용가능 / 주차 불가");
+    expect(signals).toContainEqual(
+      expect.objectContaining({ polarity: "positive", strength: "strong", type: "wheelchair_direct" })
+    );
+    expect(signals).not.toContainEqual(
+      expect.objectContaining({ polarity: "negative", type: "wheelchair_direct" })
+    );
+  });
+
   it("treats stroller as weak positive", () => {
     const signals = extractSignalsFromText("유모차 가능");
     expect(signals).toContainEqual(

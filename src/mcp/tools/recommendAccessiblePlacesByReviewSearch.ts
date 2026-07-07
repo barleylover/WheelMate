@@ -11,6 +11,10 @@ import {
 import { ReviewSearchService } from "../../reviewSearch/reviewSearchService.js";
 import { buildRecommendResponse } from "../../reviewSearch/reviewResponseBuilder.js";
 import {
+  discoverPlaceCandidatesByBroadReviewSearch,
+  mergePlaceCandidates
+} from "../../reviewSearch/broadCandidateDiscovery.js";
+import {
   calculateRankingScore,
   partitionRankedPlaces,
   recommendationStatus,
@@ -76,7 +80,23 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const reviewSearch = new ReviewSearchService(config);
   const origin = await kakaoLocal.resolveLocation(input.location);
   const candidateLimit = Math.min(Math.max(limit * 2, 1), config.maxPlaceCandidates);
-  const candidates = await kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit);
+  const [discoveredCandidates, localCandidates] = await Promise.all([
+    discoverPlaceCandidatesByBroadReviewSearch({
+      config,
+      kakaoLocal,
+      origin,
+      location: input.location,
+      category,
+      radiusM,
+      preferences,
+      limit: Math.min(limit, config.maxPlaceCandidates)
+    }),
+    kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit)
+  ]);
+  const candidates = mergePlaceCandidates(discoveredCandidates, localCandidates).slice(
+    0,
+    Math.min(Math.max(limit + 2, 1), 7)
+  );
 
   const ranked: RankedPlace[] = [];
   for (const place of candidates) {

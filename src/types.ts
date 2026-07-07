@@ -60,6 +60,7 @@ export interface PlaceCandidate extends Coordinates {
   distance_m?: number;
   source?: string;
   sourcePlaceId?: string;
+  searchAliases?: string[];
 }
 
 export interface NormalizedSearchResult {

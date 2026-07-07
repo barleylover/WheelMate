@@ -48,7 +48,7 @@ export class ReviewSearchService {
     preferences: string[] = [],
     maxQueries = 3
   ): Promise<ReviewAnalysis> {
-    const queries = buildReviewQueries(
+    const primaryQueries = buildReviewQueries(
       {
         placeName: place.name,
         neighborhood,
@@ -59,6 +59,22 @@ export class ReviewSearchService {
       },
       maxQueries
     );
+    const aliasQueries = (place.searchAliases ?? [])
+      .slice(0, 2)
+      .flatMap((alias) =>
+        buildReviewQueries(
+          {
+            placeName: alias,
+            neighborhood,
+            district: undefined,
+            addressToken: undefined,
+            category: place.category,
+            preferences
+          },
+          3
+        )
+      );
+    const queries = [...new Set([...aliasQueries, ...primaryQueries])].slice(0, maxQueries);
     const sources = enabledSearchSources(this.config);
     const outcomes = await this.runSearches(queries, sources);
     const relevanceContext = placeToRelevanceContext(place, neighborhood);

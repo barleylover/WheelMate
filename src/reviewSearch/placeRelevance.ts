@@ -31,7 +31,7 @@ export function placeToRelevanceContext(
 function includesNeedle(text: string, needle?: string): boolean {
   const normalizedNeedle = normalizeText(needle);
   if (!normalizedNeedle) return false;
-  return text.includes(normalizedNeedle);
+  return text.includes(normalizedNeedle) || text.replace(/\s+/g, "").includes(normalizedNeedle.replace(/\s+/g, ""));
 }
 
 export function calculatePlaceRelevance(

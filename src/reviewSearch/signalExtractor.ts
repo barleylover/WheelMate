@@ -52,6 +52,13 @@ function collectMatches(text: string, specs: PatternSpec[]): ReviewSignal[] {
   const signals: ReviewSignal[] = [];
   for (const spec of specs) {
     for (const match of text.matchAll(spec.pattern)) {
+      if (
+        spec.polarity === "negative" &&
+        spec.type === "wheelchair_direct" &&
+        /휠체어.{0,14}(?:가능|이용)/.test(match[0])
+      ) {
+        continue;
+      }
       signals.push({
         polarity: spec.polarity,
         type: spec.type,

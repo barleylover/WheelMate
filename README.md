@@ -128,6 +128,13 @@ If the package is private, enter a GitHub username and a token with package read
 
 Finds nearby candidates with Kakao Local, searches review/web snippets, extracts accessibility signals, and returns ranked recommendations.
 
+The recommendation flow uses two candidate paths:
+
+- broad review discovery: searches queries like `사당역 카페 휠체어`, extracts likely place names from search-result titles/snippets, then verifies those places with Kakao Local
+- local candidate verification: gets nearby places from Kakao Local first, then searches each place for accessibility signals
+
+Broad discovery is intentionally limited to API-provided search result metadata. It does not crawl full blog/cafe bodies.
+
 Input example:
 
 ```json

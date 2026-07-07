@@ -30,4 +30,12 @@ describe("calculatePlaceRelevance", () => {
     const score = calculatePlaceRelevance({ title: "B식당", snippet: "강남역 계단 있음" }, context);
     expect(score).toBe(0);
   });
+
+  it("matches place names despite spacing differences", () => {
+    const score = calculatePlaceRelevance(
+      { title: "블랑제리 르팡 휠체어 이용 가능", snippet: "사당역 베이커리 카페" },
+      { ...context, placeName: "블랑제리르팡", neighborhood: "사당역" }
+    );
+    expect(score).toBeGreaterThanOrEqual(0.45);
+  });
 });
