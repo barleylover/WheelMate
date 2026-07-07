@@ -360,7 +360,7 @@ function cleanLocationCandidate(value: string): string | undefined {
     .replace(/갈\s*수\s*있는/g, " ")
     .replace(/갈\s*수/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽)/g, " ")
-    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘|타고|있는|가야해|해야\s*해|해야해|해야|해줘|장소|곳|가게|데)/g, " ")
+    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|가기|가는|가도|가고|가려는|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘|타고|있는|가야해|해야\s*해|해야해|해야|해줘|장소|곳|가게|데)/g, " ")
     .replace(/\b한\b/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
     .replace(/\s+/g, " ")
@@ -799,6 +799,11 @@ export async function recommendAccessiblePlacesByReviewSearch(
     if (originIsResolved(explicitOrigin)) {
       location = explicitLocation;
       origin = explicitOrigin;
+      const explicitQueryContentPreferences = inferContentPreferencesFromQuery(input.query, location);
+      const explicitContentPreferenceSource =
+        input.query && explicitQueryContentPreferences.length > 0 ? explicitQueryContentPreferences : unsupportedPreferences;
+      contentPreferences = contentSearchPreferences(explicitContentPreferenceSource);
+      searchPreferences = [...preferences, ...contentPreferences];
     }
   }
   const interpretation = {
