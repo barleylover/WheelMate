@@ -101,12 +101,25 @@ const DEFAULT_CAUTIONS = [
 
 function recommendationToJson(item: RankedPlace, rank: number): Record<string, unknown> {
   const place = item.place;
+  const evidence = bestPositiveEvidence(item.review.results);
+  const mapLink = kakaoMapLink(place.name, place.lat, place.lng);
+  const routeLink = kakaoRouteLink(place.name, place.lat, place.lng);
+  const roadviewLink = kakaoRoadviewLink(place);
   return {
     rank,
     name: place.name,
     category: place.category,
     address: displayAddress(place),
     distance_m: place.distance_m,
+    distance_text: formatDistance(place.distance_m),
+    phone: formatPhone(place.phone),
+    recommendation_reason: recommendationReason(item),
+    source: recommendationSource(item, evidence),
+    source_line: recommendationSourceLine(item, evidence),
+    map_link: mapLink,
+    roadview_link: roadviewLink,
+    support_facilities_display: supportFacilityDisplay(item.support_facilities_nearby),
+    display_markdown: recommendationDisplayBlock(item, rank),
     review_signal_grade: item.review.review_signal_grade,
     official_support_grade: item.official_support_grade,
     recommendation_status: item.recommendation_status,
@@ -128,9 +141,9 @@ function recommendationToJson(item: RankedPlace, rank: number): Record<string, u
     unknown_or_unverified: UNKNOWN_OR_UNVERIFIED,
     cautions: DEFAULT_CAUTIONS,
     links: {
-      kakao_map: kakaoMapLink(place.name, place.lat, place.lng),
-      kakao_route: kakaoRouteLink(place.name, place.lat, place.lng),
-      kakao_roadview: kakaoRoadviewLink(place)
+      kakao_map: mapLink,
+      kakao_route: routeLink,
+      kakao_roadview: roadviewLink
     },
     attribution: item.review.attribution
   };
@@ -200,13 +213,35 @@ function recommendationReason(item: RankedPlace): string {
   return "접근성 관련 검색 신호가 일부 확인됨";
 }
 
-function recommendationSourceLine(item: RankedPlace, evidence: ReviewEvidence | undefined): string {
+function recommendationSource(item: RankedPlace, evidence: ReviewEvidence | undefined): Record<string, unknown> {
   if (!evidence && item.public_support_evidence.length > 0) {
     const publicEvidence = item.public_support_evidence[0];
-    return `출처: ${publicEvidence.source} - ${truncate(publicEvidence.detail, 60)}`;
+    return {
+      label: publicEvidence.source,
+      detail: truncate(publicEvidence.detail, 80),
+      link: null
+    };
   }
-  if (!evidence) return "출처: 접근성 근거 출처 없음";
-  return `출처: ${sourceLabel(evidence.source)} - [출처 보기](${evidence.link})`;
+  if (!evidence) {
+    return {
+      label: "접근성 근거 출처 없음",
+      detail: null,
+      link: null
+    };
+  }
+  return {
+    label: sourceLabel(evidence.source),
+    detail: truncate(evidence.title.replace(/<[^>]*>/g, ""), 80),
+    link: evidence.link
+  };
+}
+
+function recommendationSourceLine(item: RankedPlace, evidence: ReviewEvidence | undefined): string {
+  const source = recommendationSource(item, evidence);
+  const label = String(source.label);
+  if (typeof source.link === "string" && source.link) return `출처: ${label} - [출처 보기](${source.link})`;
+  if (typeof source.detail === "string" && source.detail) return `출처: ${label} - ${source.detail}`;
+  return `출처: ${label}`;
 }
 
 function supportFacilityLabel(type: SupportFacility["type"]): string {
@@ -217,6 +252,10 @@ function supportFacilityLabel(type: SupportFacility["type"]): string {
 function supportFacilityLine(facility: SupportFacility): string {
   const address = facility.address ? `, ${facility.address}` : "";
   return `- ${supportFacilityLabel(facility.type)}: ${facility.name}, ${formatDistance(facility.distance_m)}${address}`;
+}
+
+function supportFacilityDisplay(facilities: SupportFacility[]): string[] {
+  return supportFacilitySection(facilities).map((line) => line.replace(/^- /, ""));
 }
 
 function supportFacilitySection(facilities: SupportFacility[]): string[] {
@@ -287,6 +326,24 @@ function buildMessage(
   return lines.join("\n");
 }
 
+function recommendationDisplayBlock(item: RankedPlace, rank: number): string {
+  const place = item.place;
+  const evidence = bestPositiveEvidence(item.review.results);
+  const lines = [
+    `${rank}순위. ${place.name}`,
+    `추천 이유: ${recommendationReason(item)}`,
+    recommendationSourceLine(item, evidence),
+    `주소: ${displayAddress(place) ?? "주소 정보 없음"}`,
+    `거리: ${formatDistance(place.distance_m)}`,
+    `전화: ${formatPhone(place.phone)}`,
+    `지도: [카카오맵](${kakaoMapLink(place.name, place.lat, place.lng)}) [거리뷰](${kakaoRoadviewLink(place)})`,
+    "",
+    "주변 지원정보:",
+    ...supportFacilitySection(item.support_facilities_nearby)
+  ];
+  return lines.join("\n");
+}
+
 export function buildRecommendResponse(input: {
   interpretation: QueryInterpretation;
   origin: Origin;
@@ -297,7 +354,16 @@ export function buildRecommendResponse(input: {
   fallbackReason: string | null;
   fallbackRecommendations: RankedPlace[];
 }): Record<string, unknown> {
+  const messageForUser = buildMessage(
+    input.interpretation,
+    input.recommendations,
+    input.notRecommended,
+    input.fallbackUsed
+  );
   return {
+    answer_markdown: messageForUser,
+    answer_usage_note:
+      "사용자에게 답할 때는 answer_markdown을 우선 그대로 사용하세요. recommendations를 재요약하더라도 source/link/kakao_roadview 필드는 반드시 포함해야 합니다.",
     query_interpretation: input.interpretation,
     origin: input.origin,
     ranking_policy: {
@@ -316,11 +382,6 @@ export function buildRecommendResponse(input: {
     fallback_recommendations: input.fallbackRecommendations.map((item, index) =>
       recommendationToJson(item, index + 1)
     ),
-    message_for_user: buildMessage(
-      input.interpretation,
-      input.recommendations,
-      input.notRecommended,
-      input.fallbackUsed
-    )
+    message_for_user: messageForUser
   };
 }

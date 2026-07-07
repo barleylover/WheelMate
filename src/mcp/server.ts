@@ -23,7 +23,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자의 원문 질의를 우선 해석해 위치/카테고리/세부 조건을 보정하고, 검색 API 제목/요약문에서 휠체어 접근성 후기 신호를 찾아 보수적으로 추천합니다.",
+    "사용자의 원문 질의를 우선 해석해 위치/카테고리/세부 조건을 보정하고, 검색 API 제목/요약문에서 휠체어 접근성 후기 신호를 찾아 보수적으로 추천합니다. 결과의 answer_markdown을 사용자에게 우선 그대로 보여주세요. 재요약하더라도 출처 링크와 거리뷰 링크는 반드시 포함해야 합니다.",
   inputSchema: {
     type: "object",
     properties: {
@@ -98,6 +98,22 @@ function jsonResult(value: unknown): CallToolResult {
   };
 }
 
+function answerJsonResult(value: Record<string, unknown>): CallToolResult {
+  const answer = typeof value.answer_markdown === "string" ? value.answer_markdown : JSON.stringify(value, null, 2);
+  return {
+    content: [
+      {
+        type: "text",
+        text: answer
+      },
+      {
+        type: "text",
+        text: JSON.stringify(value, null, 2)
+      }
+    ]
+  };
+}
+
 function errorResult(message: string): CallToolResult {
   return {
     isError: true,
@@ -150,7 +166,7 @@ export function createMcpServer(config: AppConfig): Server {
           limit: readNumber(args, "limit"),
           preferences: readStringArray(args, "preferences")
         };
-        return jsonResult(await recommendAccessiblePlacesByReviewSearch(input, config));
+        return answerJsonResult(await recommendAccessiblePlacesByReviewSearch(input, config));
       }
 
       if (request.params.name === "search_place_accessibility_reviews") {

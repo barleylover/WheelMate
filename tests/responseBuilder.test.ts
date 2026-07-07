@@ -85,6 +85,8 @@ describe("buildRecommendResponse", () => {
       fallbackRecommendations: []
     });
     const text = JSON.stringify(response);
+    expect(response).toHaveProperty("answer_markdown");
+    expect(response).toHaveProperty("answer_usage_note");
     expect(text).toContain("1순위. A카페");
     expect(text).toContain("추천 이유: 엘리베이터 있음 언급이 있는 후기 신호가 확인됨");
     expect(text).toContain("출처: 네이버 블로그 - [출처 보기](https://example.com)");
@@ -95,6 +97,24 @@ describe("buildRecommendResponse", () => {
     expect(text).toContain("주변 지원정보:");
     expect(text).toContain("- 장애인 화장실: 홍대입구역 장애인화장실, 약 180m, 서울 마포구");
     expect(text).toContain("- 전동휠체어 충전기: 홍대입구역 급속충전기, 약 450m, 서울 마포구 양화로");
+    expect(response.recommendations).toEqual([
+      expect.objectContaining({
+        phone: "02-123-4567",
+        recommendation_reason: "엘리베이터 있음 언급이 있는 후기 신호가 확인됨",
+        source_line: "출처: 네이버 블로그 - [출처 보기](https://example.com)",
+        map_link: expect.stringContaining("https://map.kakao.com/link/map/"),
+        roadview_link: "https://map.kakao.com/link/roadview/12345",
+        display_markdown: expect.stringContaining("[거리뷰](https://map.kakao.com/link/roadview/12345)"),
+        source: expect.objectContaining({
+          label: "네이버 블로그",
+          link: "https://example.com"
+        }),
+        support_facilities_display: expect.arrayContaining([
+          "장애인 화장실: 홍대입구역 장애인화장실, 약 180m, 서울 마포구",
+          "전동휠체어 충전기: 홍대입구역 급속충전기, 약 450m, 서울 마포구 양화로"
+        ])
+      })
+    ]);
     expect(text).toContain("Naver Search API 결과 기반 참고 신호");
     expect(text).not.toContain("휠체어 최적" + " 경로");
     expect(text).not.toContain("공식 접근성 정보" + "로 확인");
