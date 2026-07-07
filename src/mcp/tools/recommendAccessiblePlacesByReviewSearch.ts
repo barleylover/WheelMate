@@ -26,7 +26,7 @@ import type { Category, Origin, PlaceCandidate, RankedPlace, ReviewSignal } from
 
 export interface RecommendAccessiblePlacesInput {
   query?: string;
-  location: string;
+  location?: string;
   category?: Category;
   radius_m?: number;
   limit?: number;
@@ -120,6 +120,63 @@ const CONTENT_SYNONYMS: Record<string, string[]> = {
   채식: ["채식", "비건"]
 };
 
+const CONTENT_OR_CATEGORY_TERMS = [
+  "장애인 화장실",
+  "전동휠체어 충전기",
+  "마라탕",
+  "라멘",
+  "라면",
+  "초밥",
+  "스시",
+  "포케",
+  "파스타",
+  "피자",
+  "햄버거",
+  "버거",
+  "샌드위치",
+  "샐러드",
+  "베이커리",
+  "빵집",
+  "디저트",
+  "브런치",
+  "한식",
+  "중식",
+  "일식",
+  "양식",
+  "분식",
+  "삼겹살",
+  "갈비",
+  "국밥",
+  "칼국수",
+  "냉면",
+  "김밥",
+  "떡볶이",
+  "비건",
+  "채식",
+  "약국",
+  "병원",
+  "서점",
+  "영화관",
+  "공연장",
+  "도서관",
+  "미술관",
+  "박물관",
+  "전시관",
+  "쇼핑몰",
+  "백화점",
+  "마트",
+  "편의점",
+  "은행",
+  "미용실",
+  "헬스장",
+  "카페",
+  "음식점",
+  "식당",
+  "맛집",
+  "화장실",
+  "충전기"
+];
+
 function normalizeContentTerm(preference: string): string {
   return preference
     .trim()
@@ -137,6 +194,73 @@ export function contentSearchPreferences(preferences: string[]): string[] {
     .map(normalizeContentTerm)
     .filter((preference) => preference.length >= 2 && !ACCESSIBILITY_OR_GENERIC_TERMS.has(preference));
   return [...new Set(terms.flatMap(expandContentTerm))].slice(0, 4);
+}
+
+function compactText(value: string): string {
+  return value.replace(/\s+/g, "");
+}
+
+function cleanLocationCandidate(value: string): string | undefined {
+  const cleaned = value
+    .replace(/[?!.,]/g, " ")
+    .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
+    .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
+    .replace(/(?:근처|주변|인근|부근|쪽)/g, " ")
+    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|갈만한|가기좋은|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘)/g, " ")
+    .replace(/\b한\b/g, " ")
+    .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || cleaned.length < 2) return undefined;
+  return cleaned;
+}
+
+export function inferLocationFromQuery(query?: string): string | undefined {
+  if (!query) return undefined;
+  const normalized = query.replace(/\s+/g, " ").trim();
+  const keywordPositions = CONTENT_OR_CATEGORY_TERMS
+    .map((term) => normalized.indexOf(term))
+    .filter((index) => index > 0);
+  if (keywordPositions.length > 0) {
+    const beforeTarget = normalized.slice(0, Math.min(...keywordPositions));
+    const cleaned = cleanLocationCandidate(beforeTarget);
+    if (cleaned) return cleaned;
+  }
+
+  const suffixMatch = normalized.match(
+    /([가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,4}?(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점))/
+  );
+  return cleanLocationCandidate(suffixMatch?.[1] ?? "");
+}
+
+function resolveInputLocation(inputLocation: string | undefined, query?: string): string {
+  const explicit = inputLocation?.trim();
+  const inferred = inferLocationFromQuery(query);
+  if (!explicit && inferred) return inferred;
+  if (explicit && inferred) {
+    const explicitCompact = compactText(explicit);
+    const inferredCompact = compactText(inferred);
+    if (inferredCompact.length > explicitCompact.length && inferredCompact.includes(explicitCompact)) {
+      return inferred;
+    }
+  }
+  if (explicit) return explicit;
+  throw new Error("location is required or must be inferable from query");
+}
+
+export function inferCategoryFromQuery(query: string | undefined, fallback: Category): Category {
+  if (!query) return fallback;
+  if (/장애인\s*화장실|화장실/.test(query)) return "restroom";
+  if (/전동휠체어\s*충전|충전기/.test(query)) return "charger";
+  if (/박물관|미술관/.test(query)) return "museum";
+  if (/영화관|공연장|도서관|전시관/.test(query)) return "culture";
+  if (/카페|커피|베이커리|빵집|디저트|브런치/.test(query)) return "cafe";
+  if (
+    /음식점|식당|맛집|마라탕|라멘|라면|초밥|스시|포케|파스타|피자|햄버거|버거|샌드위치|샐러드|한식|중식|일식|양식|분식|삼겹살|갈비|국밥|칼국수|냉면|김밥|떡볶이|비건|채식/.test(query)
+  ) {
+    return "restaurant";
+  }
+  return fallback;
 }
 
 function inferContentPreferencesFromQuery(query?: string): string[] {
@@ -254,7 +378,8 @@ export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
 ): Promise<Record<string, unknown>> {
-  const category = normalizeCategory(input.category);
+  const location = resolveInputLocation(input.location, input.query);
+  const category = inferCategoryFromQuery(input.query, normalizeCategory(input.category));
   const radiusM = input.radius_m ?? config.defaultRadiusM;
   const limit = input.limit ?? config.defaultLimit;
   const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
@@ -264,7 +389,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
   ]);
   const searchPreferences = [...preferences, ...contentPreferences];
   const interpretation = {
-    location: input.location,
+    location,
     category,
     radius_m: radiusM,
     preferences,
@@ -275,14 +400,14 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const kakaoLocal = new KakaoLocalClient(config);
   const publicData = new PublicDataClient(config);
   const reviewSearch = new ReviewSearchService(config);
-  const origin = await kakaoLocal.resolveLocation(input.location);
+  const origin = await kakaoLocal.resolveLocation(location);
   const candidateLimit = Math.min(Math.max(limit * 2, 1), config.maxPlaceCandidates);
   const [discoveredCandidates, contentLocalCandidates, localCandidates] = await Promise.all([
     discoverPlaceCandidatesByBroadReviewSearch({
       config,
       kakaoLocal,
       origin,
-      location: input.location,
+      location,
       category,
       radiusM,
       preferences: searchPreferences,
@@ -290,19 +415,19 @@ export async function recommendAccessiblePlacesByReviewSearch(
     }),
     searchContentSpecificLocalCandidates({
       kakaoLocal,
-      location: input.location,
+      location,
       origin,
       radiusM,
       contentPreferences,
       limit: Math.min(limit, config.maxPlaceCandidates)
     }),
-    kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit)
+    kakaoLocal.searchNearbyPlaces(location, origin, category, radiusM, candidateLimit)
   ]);
   const mergedCandidates = mergePlaceCandidates(
     mergePlaceCandidates(discoveredCandidates, contentLocalCandidates),
     localCandidates
   ).map((place) =>
-    fillMissingHubAddress(place, origin, input.location)
+    fillMissingHubAddress(place, origin, location)
   );
   const preferenceMatchedCandidates = contentPreferences.length > 0
     ? mergedCandidates.filter((place) => placeMatchesContentPreferences(place, contentPreferences))
@@ -315,7 +440,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const ranked: RankedPlace[] = [];
   for (const place of candidates) {
     const reviewQueryLimit = (place.discoveryEvidence?.length ?? 0) > 0 ? 0 : 3;
-    const review = await reviewSearch.analyzePlace(place, input.location, searchPreferences, reviewQueryLimit);
+    const review = await reviewSearch.analyzePlace(place, location, searchPreferences, reviewQueryLimit);
     const supportFacilities = publicData.findNearbySupportFacilities(
       { lat: place.lat, lng: place.lng },
       "all",

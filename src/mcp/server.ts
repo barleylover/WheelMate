@@ -28,7 +28,7 @@ const recommendTool: Tool = {
     type: "object",
     properties: {
       query: { type: "string", description: "사용자의 원문 질의" },
-      location: { type: "string", description: "예: 홍대입구역, 강남역, 서울시청" },
+      location: { type: "string", description: "예: 홍대입구역, 강남역, 서울시청. query에 명확히 포함되어 있으면 생략 가능" },
       category: {
         type: "string",
         enum: ["cafe", "restaurant", "culture", "museum", "restroom", "charger", "any"]
@@ -42,7 +42,7 @@ const recommendTool: Tool = {
           "접근성 조건과 세부 장소/음식 조건. 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터, 마라탕, 라멘, 햄버거, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성은 넣지 않아도 됩니다."
       }
     },
-    required: ["location"],
+    required: [],
     additionalProperties: false
   }
 };
@@ -135,10 +135,11 @@ export function createMcpServer(config: AppConfig): Server {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
       if (request.params.name === "recommend_accessible_places_by_review_search") {
+        const query = readString(args, "query");
         const location = readString(args, "location");
-        if (!location) return errorResult("location is required");
+        if (!location && !query) return errorResult("location or query is required");
         const input: RecommendAccessiblePlacesInput = {
-          query: readString(args, "query"),
+          query,
           location,
           category: readString(args, "category") as RecommendAccessiblePlacesInput["category"],
           radius_m: readNumber(args, "radius_m"),
