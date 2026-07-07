@@ -60,12 +60,83 @@ function preferenceBonus(
   return bonus;
 }
 
-function contentSearchPreferences(preferences: string[]): string[] {
-  const generic = new Set(["조용한", "분위기", "분위기좋은", "넓은", "맛있는", "좋은"]);
-  return [...new Set(preferences)]
-    .map((preference) => preference.trim())
-    .filter((preference) => preference.length >= 2 && !generic.has(preference))
-    .slice(0, 3);
+const ACCESSIBILITY_OR_GENERIC_TERMS = new Set([
+  "휠체어",
+  "전동휠체어",
+  "휠체어가능",
+  "휠체어이용",
+  "휠체어접근",
+  "장애인",
+  "접근성",
+  "접근",
+  "출입",
+  "입장",
+  "이용",
+  "가능",
+  "이용가능",
+  "출입가능",
+  "접근가능",
+  "무장애",
+  "배리어프리",
+  "베리어프리",
+  "문턱",
+  "단차",
+  "경사로",
+  "슬로프",
+  "계단",
+  "엘리베이터",
+  "엘베",
+  "승강기",
+  "화장실",
+  "장애인화장실",
+  "유모차",
+  "조용한",
+  "분위기",
+  "분위기좋은",
+  "넓은",
+  "맛있는",
+  "좋은",
+  "근처",
+  "주변",
+  "추천",
+  "장소",
+  "가게",
+  "음식점",
+  "식당",
+  "카페"
+]);
+
+const CONTENT_SYNONYMS: Record<string, string[]> = {
+  햄버거: ["햄버거", "버거"],
+  버거: ["버거", "햄버거"],
+  초밥: ["초밥", "스시"],
+  스시: ["스시", "초밥"],
+  베이커리: ["베이커리", "빵집"],
+  빵집: ["빵집", "베이커리"],
+  돈까스: ["돈까스", "돈가스"],
+  돈가스: ["돈가스", "돈까스"],
+  쌀국수: ["쌀국수", "베트남"],
+  비건: ["비건", "채식"],
+  채식: ["채식", "비건"]
+};
+
+function normalizeContentTerm(preference: string): string {
+  return preference
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/(?:으로|로)?(?:갈만한|가기좋은|접근가능한|이용가능한)$/g, "")
+    .replace(/(?:맛집|전문점|집|가게)$/g, "");
+}
+
+function expandContentTerm(term: string): string[] {
+  return CONTENT_SYNONYMS[term] ?? [term];
+}
+
+export function contentSearchPreferences(preferences: string[]): string[] {
+  const terms = preferences
+    .map(normalizeContentTerm)
+    .filter((preference) => preference.length >= 2 && !ACCESSIBILITY_OR_GENERIC_TERMS.has(preference));
+  return [...new Set(terms.flatMap(expandContentTerm))].slice(0, 4);
 }
 
 function inferContentPreferencesFromQuery(query?: string): string[] {
@@ -119,7 +190,10 @@ function inferContentPreferencesFromQuery(query?: string): string[] {
     "헬스장",
     "공원"
   ];
-  const inferred = terms.filter((term) => query.includes(term));
+  const explicitTypeTerms = Array.from(query.matchAll(/([가-힣A-Za-z0-9]{2,12})(?:집|전문점|가게)/g)).map(
+    (match) => match[1] ?? ""
+  );
+  const inferred = [...terms.filter((term) => query.includes(term)), ...explicitTypeTerms];
   if (inferred.includes("스시") && !inferred.includes("초밥")) inferred.push("초밥");
   if (inferred.includes("초밥") && !inferred.includes("스시")) inferred.push("스시");
   if (inferred.includes("베이커리") && !inferred.includes("빵집")) inferred.push("빵집");
@@ -152,6 +226,30 @@ function fillMissingHubAddress(place: PlaceCandidate, origin: Origin, location: 
   };
 }
 
+async function searchContentSpecificLocalCandidates(input: {
+  kakaoLocal: KakaoLocalClient;
+  location: string;
+  origin: Origin;
+  radiusM: number;
+  contentPreferences: string[];
+  limit: number;
+}): Promise<PlaceCandidate[]> {
+  if (input.contentPreferences.length === 0) return [];
+  const terms = input.contentPreferences.slice(0, 3);
+  const results = await Promise.all(
+    terms.map((term) =>
+      input.kakaoLocal.keywordSearch(
+        `${input.location} ${term}`,
+        input.origin.lng,
+        input.origin.lat,
+        input.radiusM,
+        Math.max(2, Math.min(input.limit, 5))
+      )
+    )
+  );
+  return results.flat();
+}
+
 export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
@@ -179,7 +277,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const reviewSearch = new ReviewSearchService(config);
   const origin = await kakaoLocal.resolveLocation(input.location);
   const candidateLimit = Math.min(Math.max(limit * 2, 1), config.maxPlaceCandidates);
-  const [discoveredCandidates, localCandidates] = await Promise.all([
+  const [discoveredCandidates, contentLocalCandidates, localCandidates] = await Promise.all([
     discoverPlaceCandidatesByBroadReviewSearch({
       config,
       kakaoLocal,
@@ -190,9 +288,20 @@ export async function recommendAccessiblePlacesByReviewSearch(
       preferences: searchPreferences,
       limit: Math.min(limit, config.maxPlaceCandidates)
     }),
+    searchContentSpecificLocalCandidates({
+      kakaoLocal,
+      location: input.location,
+      origin,
+      radiusM,
+      contentPreferences,
+      limit: Math.min(limit, config.maxPlaceCandidates)
+    }),
     kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit)
   ]);
-  const mergedCandidates = mergePlaceCandidates(discoveredCandidates, localCandidates).map((place) =>
+  const mergedCandidates = mergePlaceCandidates(
+    mergePlaceCandidates(discoveredCandidates, contentLocalCandidates),
+    localCandidates
+  ).map((place) =>
     fillMissingHubAddress(place, origin, input.location)
   );
   const preferenceMatchedCandidates = contentPreferences.length > 0
