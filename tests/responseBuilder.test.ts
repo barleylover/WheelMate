@@ -252,4 +252,29 @@ describe("buildRecommendResponse", () => {
       }
     });
   });
+
+  it("surfaces missing Kakao Local credentials before claiming no candidates exist", () => {
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "잠실역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "잠실역", lat: 0, lng: 0, provider: "unresolved" },
+      recommendations: [],
+      notRecommended: [],
+      unverified: [],
+      fallbackUsed: false,
+      fallbackReason: "kakao_local_credentials_missing",
+      fallbackRecommendations: []
+    });
+
+    expect(String(response.answer_markdown)).toContain("Kakao Local API 키가 서버 또는 Authorization 토큰으로 전달되지 않아");
+    expect(response.candidate_diagnostics).toEqual({
+      fallback_reason: "kakao_local_credentials_missing",
+      likely_issue: "kakao_local_api_key_missing_or_not_passed"
+    });
+  });
 });

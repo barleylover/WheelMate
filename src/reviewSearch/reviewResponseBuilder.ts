@@ -118,6 +118,11 @@ interface SearchDiagnostics {
   likely_issue: string | null;
 }
 
+interface CandidateDiagnostics {
+  fallback_reason: string | null;
+  likely_issue: string | null;
+}
+
 function emptySourceCounts(): Record<SearchSource, number> {
   return {
     naver_blog: 0,
@@ -167,6 +172,43 @@ function buildSearchDiagnostics(items: RankedPlace[]): SearchDiagnostics {
     unavailable_sources: unavailableSources,
     likely_issue: likelyIssue
   };
+}
+
+function buildCandidateDiagnostics(fallbackReason: string | null): CandidateDiagnostics {
+  let likelyIssue: string | null = null;
+  if (fallbackReason === "kakao_local_credentials_missing") {
+    likelyIssue = "kakao_local_api_key_missing_or_not_passed";
+  } else if (fallbackReason === "location_unresolved") {
+    likelyIssue = "location_could_not_be_resolved";
+  } else if (fallbackReason === "content_preference_filtered_all_candidates") {
+    likelyIssue = "content_filter_removed_all_candidates";
+  }
+  return {
+    fallback_reason: fallbackReason,
+    likely_issue: likelyIssue
+  };
+}
+
+function zeroRecommendationMessage(
+  fallbackReason: string | null,
+  diagnostics: SearchDiagnostics
+): string {
+  if (fallbackReason === "kakao_local_credentials_missing") {
+    return "Kakao Local API 키가 서버 또는 Authorization 토큰으로 전달되지 않아 위치 좌표와 후보 장소를 찾지 못했습니다. `get_wheelmate_runtime_status`에서 `kakao_rest_api_key_configured`가 true인지 먼저 확인해 주세요.";
+  }
+  if (fallbackReason === "location_unresolved") {
+    return "요청 위치의 좌표를 찾지 못해 주변 후보 장소를 만들지 못했습니다. 위치명을 더 구체적으로 입력하거나 Kakao Local API 상태를 확인해 주세요.";
+  }
+  if (fallbackReason === "content_preference_filtered_all_candidates") {
+    return "요청한 세부 장소/음식 조건에 맞는 주변 후보가 없어 추천을 만들지 못했습니다. 같은 위치에서 더 넓은 장소 종류로 다시 시도해 주세요.";
+  }
+  if (diagnostics.likely_issue === "search_api_credentials_missing_or_not_passed") {
+    return "검색 API 인증이 배포 서버까지 전달되지 않아 후기 근거를 가져오지 못했습니다. `get_wheelmate_runtime_status`에서 Naver/Kakao 키 설정 여부를 먼저 확인해 주세요.";
+  }
+  if (diagnostics.likely_issue === "search_api_calls_unavailable") {
+    return "검색 API 호출이 실패해 후기 근거를 가져오지 못했습니다. 잠시 후 다시 시도하거나 런타임 상태의 unavailable_sources를 확인해 주세요.";
+  }
+  return "추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.";
 }
 
 function recommendationToJson(item: RankedPlace, rank: number): Record<string, unknown> {
@@ -348,6 +390,7 @@ function buildMessage(
   recommendations: RankedPlace[],
   notRecommended: RankedPlace[],
   unverified: RankedPlace[],
+  fallbackReason: string | null,
   fallbackUsed: boolean
 ): string {
   const lines: string[] = [];
@@ -358,17 +401,7 @@ function buildMessage(
   );
   lines.push("");
   if (recommendations.length === 0) {
-    if (diagnostics.likely_issue === "search_api_credentials_missing_or_not_passed") {
-      lines.push(
-        "검색 API 인증이 배포 서버까지 전달되지 않아 후기 근거를 가져오지 못했습니다. `get_wheelmate_runtime_status`에서 Naver/Kakao 키 설정 여부를 먼저 확인해 주세요."
-      );
-    } else if (diagnostics.likely_issue === "search_api_calls_unavailable") {
-      lines.push(
-        "검색 API 호출이 실패해 후기 근거를 가져오지 못했습니다. 잠시 후 다시 시도하거나 런타임 상태의 unavailable_sources를 확인해 주세요."
-      );
-    } else {
-      lines.push("추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.");
-    }
+    lines.push(zeroRecommendationMessage(fallbackReason, diagnostics));
   } else {
     for (const [index, item] of recommendations.entries()) {
       const place = item.place;
@@ -444,11 +477,13 @@ export function buildRecommendResponse(input: {
     ...input.notRecommended,
     ...input.unverified
   ]);
+  const candidateDiagnostics = buildCandidateDiagnostics(input.fallbackReason);
   const messageForUser = buildMessage(
     input.interpretation,
     input.recommendations,
     input.notRecommended,
     input.unverified,
+    input.fallbackReason,
     input.fallbackUsed
   );
   return {
@@ -470,6 +505,7 @@ export function buildRecommendResponse(input: {
     unverified_omitted_count: Math.max(0, input.unverified.length - 3),
     fallback_used: input.fallbackUsed,
     fallback_reason: input.fallbackReason,
+    candidate_diagnostics: candidateDiagnostics,
     search_diagnostics: searchDiagnostics,
     fallback_recommendations: input.fallbackRecommendations.map((item, index) =>
       recommendationToJson(item, index + 1)

@@ -136,6 +136,16 @@ describe("contentSearchPreferences", () => {
         category: "restaurant" as const
       },
       {
+        query: "사당역 맛집 추천해줘. 휠체어 타고 갈거야",
+        location: "사당역",
+        category: "restaurant" as const
+      },
+      {
+        query: "잠실역 카페 추천해줘. 휠체어 접근 좋은 곳으로",
+        location: "잠실역",
+        category: "cafe" as const
+      },
+      {
         query: "전주 한옥 마을 주변 휠체어 가능한 카페",
         location: "전주 한옥 마을",
         category: "cafe" as const

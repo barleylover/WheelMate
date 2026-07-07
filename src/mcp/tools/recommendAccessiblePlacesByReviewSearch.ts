@@ -110,6 +110,14 @@ const ACCESSIBILITY_OR_GENERIC_TERMS = new Set([
   "추천해줘",
   "찾아줘",
   "가야해",
+  "갈거야",
+  "갈게",
+  "갈께",
+  "가려고",
+  "가려는데",
+  "갈건데",
+  "갈텐데",
+  "방문할거야",
   "갈만한",
   "가기좋은",
   "타고",
@@ -346,7 +354,7 @@ function stripQueryNoise(value: string): string {
     .replace(/[?!.,]/g, " ")
     .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
     .replace(/전동휠체어/g, " ")
-    .replace(/(?:해야\s*해|해야해|해야|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|괜찮은|갈만한|갈\s*수|살\s*수\s*있나|가기좋은|가기|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|말고|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게|좌석|아기랑|유모차랑|유모차|혼밥|있는|데)/g, " ")
+    .replace(/(?:해야\s*해|해야해|해야|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|괜찮은|갈만한|갈\s*수|갈\s*거야|갈거야|갈\s*게|갈게|갈께|갈\s*건데|갈건데|갈\s*텐데|갈텐데|갈\s*예정|가려고|가려는데|방문할\s*거야|방문하려고|살\s*수\s*있나|가기좋은|가기|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|말고|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게|좌석|아기랑|유모차랑|유모차|혼밥|있는|데)/g, " ")
     .replace(/(?:^|\s)(?:쪽|에서|으로|로|에|의)(?=\s|$)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -360,7 +368,7 @@ function cleanLocationCandidate(value: string): string | undefined {
     .replace(/갈\s*수\s*있는/g, " ")
     .replace(/갈\s*수/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽)/g, " ")
-    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|가기|가는|가도|가고|가려는|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘|타고|있는|가야해|해야\s*해|해야해|해야|해줘|장소|곳|가게|데)/g, " ")
+    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|갈\s*거야|갈거야|갈\s*게|갈게|갈께|갈\s*건데|갈건데|갈\s*텐데|갈텐데|갈\s*예정|가려고|가려는데|방문할\s*거야|방문하려고|가기좋은|가기|가는|가도|가고|가려는|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘|타고|있는|가야해|해야\s*해|해야해|해야|해줘|장소|곳|가게|데)/g, " ")
     .replace(/\b한\b/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
     .replace(/\s+/g, " ")
@@ -900,9 +908,19 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const reviewPositiveCount = recommendations.filter((item) =>
     ["R1", "R2"].includes(item.review.review_signal_grade)
   ).length;
+  const candidateFallbackReason =
+    !config.kakaoRestApiKey
+      ? "kakao_local_credentials_missing"
+      : !originIsResolved(origin)
+        ? "location_unresolved"
+        : mergedCandidates.length === 0
+          ? "kakao_local_unavailable_or_no_candidates"
+          : preferenceMatchedCandidates.length === 0
+            ? "content_preference_filtered_all_candidates"
+            : "no_review_positive_candidates";
   const fallbackReason =
     candidates.length === 0
-      ? "kakao_local_unavailable_or_no_candidates"
+      ? candidateFallbackReason
       : category === "cafe" || category === "restaurant"
         ? fallbackReasonForReviewResults(reviewPositiveCount, limit)
         : null;
