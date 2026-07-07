@@ -120,12 +120,13 @@ export async function recommendAccessiblePlacesByReviewSearch(
     : mergedCandidates;
   const candidates = preferenceMatchedCandidates.slice(
     0,
-    Math.min(Math.max(limit + 2, 1), 7)
+    Math.min(Math.max(limit, 1), 5)
   );
 
   const ranked: RankedPlace[] = [];
   for (const place of candidates) {
-    const review = await reviewSearch.analyzePlace(place, input.location, searchPreferences, 5);
+    const reviewQueryLimit = (place.discoveryEvidence?.length ?? 0) > 0 ? 0 : 3;
+    const review = await reviewSearch.analyzePlace(place, input.location, searchPreferences, reviewQueryLimit);
     const supportFacilities = publicData.findNearbySupportFacilities(
       { lat: place.lat, lng: place.lng },
       "all",

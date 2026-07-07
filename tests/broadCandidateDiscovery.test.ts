@@ -22,6 +22,13 @@ describe("broad candidate discovery", () => {
     expect(queries).toContain("제주도 마라탕 휠체어");
   });
 
+  it("adds local aliases for campus-style locations", () => {
+    const queries = buildBroadDiscoveryQueries("성균관대 자연과학캠퍼스", "cafe");
+
+    expect(queries).toContain("성균관대역 카페 휠체어");
+    expect(queries).toContain("율전동 카페 휠체어");
+  });
+
   it("extracts likely place terms from broad search titles", () => {
     const terms = extractBroadCandidateTerms(
       {

@@ -36,4 +36,10 @@ describe("extractSignalsFromText", () => {
     expect(signals.some((signal) => signal.polarity === "positive" && signal.type === "wheelchair_direct")).toBe(true);
     expect(signals.some((signal) => signal.polarity === "negative" && signal.type === "wheelchair_direct")).toBe(false);
   });
+
+  it("recognizes particle-heavy wheelchair availability phrases", () => {
+    const signals = extractSignalsFromText("휠체어 도 사용 가능하고 휠체어 진입도 가능한 울릉도 식당입니다.");
+
+    expect(signals.some((signal) => signal.polarity === "positive" && signal.type === "wheelchair_direct")).toBe(true);
+  });
 });

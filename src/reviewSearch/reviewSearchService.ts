@@ -8,6 +8,7 @@ import type {
   SearchSource,
   SourceSearchOutcome
 } from "../types.js";
+import { mapWithConcurrency } from "../utils/concurrency.js";
 import { buildReviewQueries } from "./queryBuilder.js";
 import { calculatePlaceRelevance, placeToRelevanceContext } from "./placeRelevance.js";
 import { extractSignals } from "./signalExtractor.js";
@@ -144,26 +145,31 @@ export class ReviewSearchService {
   }
 
   private async runSearches(queries: string[], sources: SearchSource[]): Promise<SourceSearchOutcome[]> {
-    const calls: Array<Promise<SourceSearchOutcome>> = [];
+    const calls: Array<{ source: SearchSource; query: string }> = [];
     for (const query of queries) {
       for (const source of sources) {
         if (calls.length >= this.config.maxReviewSearchCalls) break;
-        calls.push(this.searchSource(source, query));
+        calls.push({ source, query });
       }
       if (calls.length >= this.config.maxReviewSearchCalls) break;
     }
-    const settled = await Promise.allSettled(calls);
-    return settled.map((result, index) => {
-      if (result.status === "fulfilled") return result.value;
-      const source = sources[index % Math.max(1, sources.length)] ?? "naver_blog";
-      return {
-        source,
-        query: queries[Math.floor(index / Math.max(1, sources.length))] ?? "",
-        results: [],
-        unavailable: true,
-        error: "search_call_rejected"
-      };
-    });
+    return mapWithConcurrency(
+      calls,
+      Math.min(8, Math.max(1, sources.length * 2)),
+      async ({ source, query }) => {
+        try {
+          return await this.searchSource(source, query);
+        } catch {
+          return {
+            source,
+            query,
+            results: [],
+            unavailable: true,
+            error: "search_call_rejected"
+          };
+        }
+      }
+    );
   }
 
   private searchSource(source: SearchSource, query: string): Promise<SourceSearchOutcome> {

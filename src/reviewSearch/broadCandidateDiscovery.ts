@@ -4,12 +4,24 @@ import { KakaoLocalClient } from "../clients/kakaoLocalClient.js";
 import { NaverSearchClient } from "../clients/naverSearchClient.js";
 import { categoryKeyword } from "../core/categoryMapper.js";
 import type { Category, NormalizedSearchResult, Origin, PlaceCandidate, ReviewEvidence, SearchSource, SourceSearchOutcome } from "../types.js";
+import { mapWithConcurrency } from "../utils/concurrency.js";
 import { enabledSearchSources } from "./sourceRouter.js";
 import { extractSignals } from "./signalExtractor.js";
 
 const DISCOVERY_ACCESSIBILITY_PATTERN =
   /휠체어|전동휠체어|문턱|단차|턱\s*없|경사로|슬로프|무장애|배리어프리|베리어프리|장애인\s*화장실|엘리베이터|엘베|승강기|유모차/;
 const DISCOVERY_RESULTS_PER_QUERY = 10;
+
+interface BroadDiscoveryInput {
+  config: AppConfig;
+  kakaoLocal: KakaoLocalClient;
+  origin: Origin;
+  location: string;
+  category: Category;
+  radiusM: number;
+  preferences: string[];
+  limit: number;
+}
 
 const GENERIC_WORDS = [
   "휠체어",
@@ -174,11 +186,28 @@ function cleanSearchText(value: string): string {
     .trim();
 }
 
+function locationSearchAliases(location: string): string[] {
+  const compact = location.replace(/\s+/g, "");
+  const aliases: string[] = [];
+  if (/성균관대자연과학캠퍼스|성대자연과학캠퍼스|성균관대수원|성대수원/.test(compact)) {
+    aliases.push("성균관대역", "율전동", "성대역");
+  }
+  if (/제주국제공항|제주공항/.test(compact)) {
+    aliases.push("제주공항");
+  }
+  return unique(aliases);
+}
+
+function locationSearchTerms(location: string): string[] {
+  return unique([location, ...locationSearchAliases(location)]);
+}
+
 function stripGenericWords(value: string, location: string, category: Category): string {
   let output = cleanSearchText(value);
+  const locations = locationSearchTerms(location);
   const words = unique([
-    location,
-    location.replace(/역$/, ""),
+    ...locations,
+    ...locations.map((term) => term.replace(/역$/, "")),
     categoryKeyword(category),
     ...GENERIC_WORDS
   ].filter(Boolean));
@@ -207,7 +236,7 @@ export function buildBroadDiscoveryQueries(
   location: string,
   category: Category,
   preferences: string[] = [],
-  maxQueries = 8
+  maxQueries = 10
 ): string[] {
   const categoryLabel = categoryKeyword(category) || "장소";
   const categoryAliases =
@@ -218,23 +247,43 @@ export function buildBroadDiscoveryQueries(
         : [categoryLabel];
   const preferenceTerms = preferences.includes("장애인화장실") ? ["장애인 화장실"] : [];
   const contentPreferences = preferences.filter((preference) => !["장애인화장실", "충전기근처", "입구중요", "계단회피", "엘리베이터"].includes(preference));
+  const locations = locationSearchTerms(location);
   return unique([
-    `${location} ${categoryLabel} 휠체어`,
-    `${location} 휠체어 ${categoryLabel}`,
-    ...categoryAliases.flatMap((alias) => [
-      `${location} ${alias} 휠체어`,
-      `${location} 휠체어 ${alias}`
+    ...locations.map((searchLocation) => `${searchLocation} ${categoryLabel} 휠체어`),
+    ...locations.map((searchLocation) => `${searchLocation} 휠체어 ${categoryLabel}`),
+    ...locations.flatMap((searchLocation) => categoryAliases.flatMap((alias) => [
+      `${searchLocation} ${alias} 휠체어`,
+      `${searchLocation} 휠체어 ${alias}`
+    ])),
+    ...contentPreferences.flatMap((term) => locations.flatMap((searchLocation) => [
+      `${searchLocation} ${term} 휠체어`,
+      `${searchLocation} 휠체어 ${term}`,
+      `${searchLocation} ${term} ${categoryLabel}`
+    ])),
+    ...locations.flatMap((searchLocation) => [
+      `${searchLocation} ${categoryLabel} 휠체어 접근성`,
+      `${searchLocation} ${categoryLabel} 문턱 경사로`,
+      `${searchLocation} ${categoryLabel} 배리어프리`
     ]),
-    ...contentPreferences.flatMap((term) => [
-      `${location} ${term} 휠체어`,
-      `${location} 휠체어 ${term}`,
-      `${location} ${term} ${categoryLabel}`
-    ]),
-    `${location} ${categoryLabel} 휠체어 접근성`,
-    `${location} ${categoryLabel} 문턱 경사로`,
-    `${location} ${categoryLabel} 배리어프리`,
-    ...preferenceTerms.map((term) => `${location} ${categoryLabel} ${term}`)
+    ...preferenceTerms.flatMap((term) => locations.map((searchLocation) => `${searchLocation} ${categoryLabel} ${term}`))
   ]).slice(0, maxQueries);
+}
+
+function buildFocusedRetryQueries(location: string, category: Category): string[] {
+  const categoryLabel = categoryKeyword(category) || "장소";
+  const categoryAliases =
+    category === "restaurant"
+      ? ["식당", "음식점", "맛집"]
+      : category === "cafe"
+        ? ["카페"]
+        : [categoryLabel];
+  return unique(
+    categoryAliases.flatMap((alias) => [
+      `${location} ${alias} 휠체어`,
+      `${location} 휠체어 ${alias}`,
+      `${location} ${alias} 휠체어 이용 가능`
+    ])
+  ).slice(0, 4);
 }
 
 export function extractBroadCandidateTerms(
@@ -299,9 +348,14 @@ function discoveryEvidenceFromResult(result: NormalizedSearchResult): ReviewEvid
 }
 
 function categoryMatches(place: PlaceCandidate, category: Category): boolean {
-  const text = `${place.category} ${place.name}`;
+  const categoryText = place.category ?? "";
+  const nameText = place.name ?? "";
+  const text = `${categoryText} ${nameText}`;
   if (category === "any") return true;
-  if (category === "cafe") return /카페|커피|디저트|베이커리/.test(text);
+  if (category === "cafe") {
+    if (/(?:카페거리|거리|골목|상권|마을)$/.test(nameText)) return false;
+    return /카페|커피|디저트|베이커리/.test(categoryText) || (/음식점/.test(categoryText) && /카페|커피/.test(nameText));
+  }
   if (category === "restaurant") {
     if (/카페|커피|디저트|베이커리|제과|아이스크림|빙수/.test(text)) return false;
     return /음식점|식당|한식|중식|일식|양식|분식|고기|레스토랑|맛집/.test(text);
@@ -329,6 +383,9 @@ function broadLocationToken(location: string): string | null {
     ["광주", "광주"],
     ["대전", "대전"],
     ["울산", "울산"],
+    ["울릉도", "울릉"],
+    ["울릉군", "울릉"],
+    ["울릉", "울릉"],
     ["세종", "세종"],
     ["경기도", "경기"],
     ["강원도", "강원"],
@@ -349,7 +406,7 @@ function broadLocationToken(location: string): string | null {
 }
 
 function placeMatchesBroadLocation(place: PlaceCandidate, locationToken: string): boolean {
-  const text = `${place.name} ${place.address ?? ""} ${place.roadAddress ?? ""}`;
+  const text = `${place.address ?? ""} ${place.roadAddress ?? ""}`;
   return text.includes(locationToken);
 }
 
@@ -390,11 +447,29 @@ function compactText(value: string): string {
   return value.replace(/\s+/g, "").toLowerCase();
 }
 
+function placeNameEvidenceVariants(place: PlaceCandidate): string[] {
+  const cleaned = cleanSearchText(place.name);
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const regionOnlyVariants = new Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주", "제주도", "울릉", "울릉도"]);
+  const variants = [compactText(cleaned)];
+  if (tokens.length > 1) {
+    variants.push(compactText(tokens.slice(0, -1).join(" ")));
+    variants.push(compactText(tokens[0] ?? ""));
+  }
+  return unique(variants.filter((variant) => variant.length >= 3 && !["카페", "식당", "음식점", "본점"].includes(variant) && !regionOnlyVariants.has(variant)));
+}
+
+function evidenceMentionsPlace(place: PlaceCandidate, evidence: ReviewEvidence): boolean {
+  const evidenceText = compactText(`${evidence.title} ${evidence.snippet}`);
+  return placeNameEvidenceVariants(place).some((variant) => evidenceText.includes(variant));
+}
+
 function evidencePlaceRelevance(place: PlaceCandidate, evidence: ReviewEvidence, term: string): number {
   const evidenceText = compactText(`${evidence.title} ${evidence.snippet}`);
   const placeName = compactText(place.name);
   const lookupTerm = compactText(term);
   let score = 0;
+  if (evidenceMentionsPlace(place, evidence)) score += 12;
   if (placeName && evidenceText.includes(placeName)) score += 10 + Math.min(placeName.length, 12) / 10;
   if (lookupTerm.length >= 3 && evidenceText.includes(lookupTerm) && placeName.includes(lookupTerm)) score += 9;
   if (lookupTerm && evidenceText.includes(lookupTerm)) score += 4;
@@ -426,23 +501,12 @@ async function searchSource(
   return daum.searchWeb(query, DISCOVERY_RESULTS_PER_QUERY);
 }
 
-export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
-  config: AppConfig;
-  kakaoLocal: KakaoLocalClient;
-  origin: Origin;
-  location: string;
-  category: Category;
-  radiusM: number;
-  preferences: string[];
-  limit: number;
-}): Promise<PlaceCandidate[]> {
-  const queries = buildBroadDiscoveryQueries(input.location, input.category, input.preferences);
-  const sources = enabledSearchSources(input.config);
-  const naver = new NaverSearchClient(input.config);
-  const daum = new DaumSearchClient(input.config);
-  const outcomes = await Promise.all(
-    queries.flatMap((query) => sources.map((source) => searchSource(source, query, naver, daum)))
-  );
+function discoverySources(sources: SearchSource[]): SearchSource[] {
+  const priority: SearchSource[] = ["naver_blog", "daum_blog", "naver_web", "daum_web", "naver_cafe", "daum_cafe"];
+  return priority.filter((source) => sources.includes(source)).slice(0, 3);
+}
+
+async function discoverFromOutcomes(input: BroadDiscoveryInput, outcomes: SourceSearchOutcome[]): Promise<PlaceCandidate[]> {
   const termEvidencePairs = outcomes
     .flatMap((outcome) => outcome.results)
     .filter(hasDiscoverySignal)
@@ -480,7 +544,8 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
     const matched = places
       .filter((place) => categoryMatches(place, input.category))
       .filter((place) => !locationToken || placeMatchesBroadLocation(place, locationToken))
-      .filter((place) => !locationToken || evidencePlaceRelevance(place, evidence, term) >= 8)
+      .filter((place) => !locationToken || evidenceMentionsPlace(place, evidence))
+      .filter((place) => evidencePlaceRelevance(place, evidence, term) >= 8)
       .sort((a, b) => evidencePlaceRelevance(b, evidence, term) - evidencePlaceRelevance(a, evidence, term))
       .slice(0, 1)
       .map((place) => ({
@@ -492,4 +557,36 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
     if (matched.length > 0) usedEvidence.add(key);
   }
   return mergePlaceCandidates(discovered, []).slice(0, input.limit);
+}
+
+export async function discoverPlaceCandidatesByBroadReviewSearch(input: BroadDiscoveryInput): Promise<PlaceCandidate[]> {
+  const queries = buildBroadDiscoveryQueries(
+    input.location,
+    input.category,
+    input.preferences,
+    input.preferences.length > 0 ? 10 : 8
+  );
+  const sources = discoverySources(enabledSearchSources(input.config));
+  const naver = new NaverSearchClient(input.config);
+  const daum = new DaumSearchClient(input.config);
+  const searchRequests = queries.flatMap((query) => sources.map((source) => ({ source, query })));
+  const outcomes = await mapWithConcurrency(
+    searchRequests,
+    Math.min(10, Math.max(1, sources.length * 3)),
+    ({ source, query }) => searchSource(source, query, naver, daum)
+  );
+  const primary = await discoverFromOutcomes(input, outcomes);
+  if (primary.length > 0) return primary;
+
+  const focusedSources = sources.filter((source) => ["naver_blog", "daum_blog", "naver_web"].includes(source)).slice(0, 3);
+  if (focusedSources.length === 0) return primary;
+  const focusedRequests = buildFocusedRetryQueries(input.location, input.category).flatMap((query) =>
+    focusedSources.map((source) => ({ source, query }))
+  );
+  const focusedOutcomes = await mapWithConcurrency(
+    focusedRequests,
+    Math.min(3, focusedSources.length),
+    ({ source, query }) => searchSource(source, query, naver, daum)
+  );
+  return discoverFromOutcomes(input, focusedOutcomes);
 }

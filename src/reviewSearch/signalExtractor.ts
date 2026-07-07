@@ -10,6 +10,7 @@ interface PatternSpec {
 
 const STRONG_POSITIVE: PatternSpec[] = [
   { pattern: /(?:전동)?휠체어.{0,12}(?:출입|입장|진입|접근|이용)(?:이|가)?\s*(?:가능|괜찮|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어\s*(?:도|가|로|를|은|는)?\s*(?:사용|진입|접근|출입|입장|이용)(?:도|이|가)?\s*(?:가능|가능한|가능해|가능합니다)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어\s*(?:이용|사용)(?:이|가)?\s*(?:가능|가능해|가능한|O|○|있음)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,14}(?:들어갈 수|갈 수|이용할 수|탈 수)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,18}(?:손님|고객|이용객).{0,20}(?:매장\s*)?이용\s*(?:잘|가능|편)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
