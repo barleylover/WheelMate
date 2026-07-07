@@ -405,6 +405,121 @@ def fallback_location(location: str) -> dict[str, Any] | None:
     return None
 
 
+def compact_location_text(value: str) -> str:
+    value = normalize_space(value).lower()
+    value = re.sub(r"[\s().,\-_/·]", "", value)
+    return value
+
+
+def location_variants(value: str) -> set[str]:
+    base = compact_location_text(value)
+    variants = {base}
+    replacements = {
+        "여고": "여자고등학교",
+        "여중": "여자중학교",
+        "고": "고등학교",
+        "중고": "중고등학교",
+    }
+    for left, right in replacements.items():
+        if left in base:
+            variants.add(base.replace(left, right))
+        if right in base:
+            variants.add(base.replace(right, left))
+    return {variant for variant in variants if variant}
+
+
+def text_matches_location(query: str, text: str) -> bool:
+    query_variants = location_variants(query)
+    text_variants = location_variants(text)
+    for q in query_variants:
+        for t in text_variants:
+            if q and t and (q in t or t in q):
+                return True
+    return False
+
+
+def resolve_location_from_local_data(
+    location: str, store_csv: Path, toilet_csv: Path, geocode_cache: Path
+) -> dict[str, Any] | None:
+    candidates: list[tuple[int, dict[str, Any]]] = []
+
+    if geocode_cache.exists():
+        for row in read_csv_auto(geocode_cache):
+            name = row.get("시설물명", "")
+            address = row.get("소재지 주소", "")
+            lat = to_float(row.get("lat"))
+            lon = to_float(row.get("lon"))
+            if lat is None or lon is None:
+                continue
+            haystack = f"{name} {address} {row.get('행정동', '')}"
+            if text_matches_location(location, haystack):
+                score = 100 if text_matches_location(location, name) else 75
+                candidates.append(
+                    (
+                        score,
+                        {
+                            "name": name or location,
+                            "address": address,
+                            "lat": lat,
+                            "lon": lon,
+                            "raw": {"source": "local_geocode_cache", "row": row},
+                        },
+                    )
+                )
+
+    if store_csv.exists():
+        for row in read_csv_auto(store_csv):
+            name = f"{row.get('상호명', '')} {row.get('지점명', '')}".strip()
+            address = row.get("도로명주소", "")
+            lat = to_float(row.get("위도"))
+            lon = to_float(row.get("경도"))
+            if lat is None or lon is None:
+                continue
+            haystack = f"{name} {address} {row.get('행정동명', '')} {row.get('법정동명', '')}"
+            if text_matches_location(location, haystack):
+                candidates.append(
+                    (
+                        70,
+                        {
+                            "name": name or location,
+                            "address": address,
+                            "lat": lat,
+                            "lon": lon,
+                            "raw": {"source": "local_store_csv", "row": row},
+                        },
+                    )
+                )
+
+    if toilet_csv.exists():
+        for row in read_csv_auto(toilet_csv):
+            if row.get("구 명칭") != "서초구":
+                continue
+            name = row.get("건물명", "")
+            address = row.get("도로명주소") or row.get("지번주소", "")
+            lat = to_float(row.get("y 좌표"))
+            lon = to_float(row.get("x 좌표"))
+            if lat is None or lon is None:
+                continue
+            if text_matches_location(location, f"{name} {address}"):
+                candidates.append(
+                    (
+                        60,
+                        {
+                            "name": name or location,
+                            "address": address,
+                            "lat": lat,
+                            "lon": lon,
+                            "raw": {"source": "local_toilet_csv", "row": row},
+                        },
+                    )
+                )
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
 def resolve_location(client: KakaoLocalClient | None, location: str) -> dict[str, Any]:
     category = "SW8" if "역" in location else ""
     docs = []
@@ -817,6 +932,71 @@ def phone_questions(place: Place) -> list[str]:
     return questions
 
 
+def place_access_summary(place: Place) -> str:
+    row = place.row
+    positives = []
+    cautions = []
+    if yn(row.get("일층")) == "Y":
+        positives.append("1층")
+    elif yn(row.get("엘리베이터")) == "Y":
+        positives.append("엘리베이터 있음")
+    else:
+        cautions.append("층수/엘리베이터 확인 필요")
+    if yn(row.get("입구턱")) == "N" or yn(row.get("입구문턱")) == "Y":
+        positives.append("입구턱 없음")
+    elif yn(row.get("입구턱")) == "Y":
+        cautions.append("입구턱 있음")
+    if yn(row.get("경사로")) == "Y":
+        positives.append("경사로 있음")
+    else:
+        cautions.append("경사로 확인 필요")
+    if yn(row.get("테이블석")) == "Y":
+        positives.append("테이블석 있음")
+    if yn(row.get("장애인화장실")) == "Y":
+        positives.append("내부 장애인화장실 있음")
+    else:
+        cautions.append("내부 장애인화장실 없음/확인 필요")
+    if yn(row.get("장애인주차장")) == "Y":
+        positives.append("장애인주차장 있음")
+    elif yn(row.get("주차장")) == "Y":
+        cautions.append("일반 주차장만 확인")
+    return f"강점: {', '.join(positives) or '데이터상 강점 제한적'} / 확인: {', '.join(cautions) or '큰 주의 항목 없음'}"
+
+
+def place_description(place: Place, prefix: str = "") -> list[str]:
+    category = " > ".join(
+        value
+        for value in (place.category_major, place.category_mid, place.category_minor)
+        if value
+    )
+    lines = [
+        f"{prefix}{place.display_name}",
+        f"  - 거리/주소: 약 {place.distance_m:.0f}m, {place.address}",
+        f"  - 업종: {category or '정보 없음'}",
+        f"  - 접근성 요약: {place_access_summary(place)}",
+        f"  - 영업/연락: {place.hours or '영업시간 정보 없음'} / {place.phone or '전화번호 정보 없음'}",
+        f"  - 추천 근거: {', '.join(place.score_reasons[:4]) or '접근성 점수 기준'}",
+    ]
+    return lines
+
+
+def place_dedupe_key(place: Place) -> str:
+    address = re.sub(r"\([^)]*\)", "", place.address or "")
+    address = re.sub(r"\s+", "", address)
+    name = re.sub(r"\s+", "", place.display_name or "")
+    return f"{name}|{address}"
+
+
+def dedupe_places(places: list[Place]) -> list[Place]:
+    best_by_key: dict[str, Place] = {}
+    for place in places:
+        key = place_dedupe_key(place)
+        existing = best_by_key.get(key)
+        if existing is None or (place.score, -place.distance_m) > (existing.score, -existing.distance_m):
+            best_by_key[key] = place
+    return list(best_by_key.values())
+
+
 def render_facility_list(items: list[dict[str, Any]], empty_text: str, label_field: str) -> list[str]:
     if not items:
         return [status_line("확인 필요", empty_text)]
@@ -866,6 +1046,10 @@ def render_checklist(
         f"- 접근성 판단: {recommendation} (점수 {place.score:.1f})",
         f"- 전화번호: {place.phone or '정보 없음'}",
         f"- 영업시간: {place.hours or '정보 없음'}",
+        f"- 한줄 요약: {place_access_summary(place)}",
+        "",
+        "## 추천 후보 상세",
+        *[f"- {line}" if index == 0 else f"  {line}" for index, line in enumerate(place_description(place))],
         "",
         "## 1. 장소 접근성",
         *[f"- {line}" for line in access_lines(place)],
@@ -901,18 +1085,9 @@ def render_checklist(
     )
     if alternatives:
         for alt in alternatives:
-            short = []
-            if yn(alt.row.get("일층")) == "Y":
-                short.append("1층")
-            if yn(alt.row.get("입구턱")) == "N" or yn(alt.row.get("입구문턱")) == "Y":
-                short.append("입구턱 없음")
-            if yn(alt.row.get("경사로")) == "Y":
-                short.append("경사로 있음")
-            if yn(alt.row.get("장애인주차장")) == "Y":
-                short.append("장애인주차장 있음")
-            if yn(alt.row.get("주차장")) == "Y":
-                short.append("주차장 있음")
-            lines.append(f"- {alt.display_name}: 약 {alt.distance_m:.0f}m, {', '.join(short) or '세부 확인 필요'}")
+            detail = place_description(alt)
+            lines.append(f"- {detail[0]}")
+            lines.extend(f"  {item}" for item in detail[1:])
     else:
         lines.append("- [확인 필요] 같은 조건의 대체 후보가 없습니다. 반경을 넓혀 재검색하세요.")
 
@@ -939,7 +1114,20 @@ def build_checklist(args: argparse.Namespace) -> str:
     api_key = load_env_key(Path(args.env))
     client = KakaoLocalClient(api_key) if api_key else None
     location_query, category, preference = parse_query(args.query, args.location, args.category)
-    origin = resolve_location(client, location_query)
+    try:
+        origin = resolve_location(client, location_query)
+    except RuntimeError:
+        origin = resolve_location_from_local_data(
+            location_query,
+            Path(args.stores),
+            Path(args.toilets),
+            Path(args.geocode_cache),
+        )
+        if origin is None:
+            raise RuntimeError(
+                f"{location_query} 근처의 위치를 찾지 못했습니다. "
+                "서초구 주요 역, 가게명, 공공시설명 또는 더 구체적인 주소를 입력해 주세요."
+            )
     raw_places = load_places(Path(args.stores), category, origin, args.radius)
     intent_note = "카테고리와 접근성 점수를 기준으로 후보를 정렬했습니다."
     if preference:
@@ -977,7 +1165,7 @@ def build_checklist(args: argparse.Namespace) -> str:
                 intent_note = (
                     f"'{preference}' 관련 후보를 찾지 못해 전체 {category} 후보를 정렬했습니다."
                 )
-    places = [score_place(place, preference) for place in raw_places]
+    places = dedupe_places([score_place(place, preference) for place in raw_places])
     places.sort(key=lambda place: (-place.score, place.distance_m))
     if not places:
         raise SystemExit(
