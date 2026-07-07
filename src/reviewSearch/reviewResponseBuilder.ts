@@ -99,6 +99,76 @@ const DEFAULT_CAUTIONS = [
   "방문 전 전화 확인을 권장합니다."
 ];
 
+const ALL_SEARCH_SOURCES: SearchSource[] = [
+  "naver_blog",
+  "naver_cafe",
+  "naver_web",
+  "daum_blog",
+  "daum_cafe",
+  "daum_web"
+];
+
+interface SearchDiagnostics {
+  analyzed_candidate_count: number;
+  review_positive_candidate_count: number;
+  review_evidence_count: number;
+  searched_sources: SearchSource[];
+  source_counts: Record<SearchSource, number>;
+  unavailable_sources: Partial<Record<SearchSource, string>>;
+  likely_issue: string | null;
+}
+
+function emptySourceCounts(): Record<SearchSource, number> {
+  return {
+    naver_blog: 0,
+    naver_cafe: 0,
+    naver_web: 0,
+    daum_blog: 0,
+    daum_cafe: 0,
+    daum_web: 0
+  };
+}
+
+function buildSearchDiagnostics(items: RankedPlace[]): SearchDiagnostics {
+  const sourceCounts = emptySourceCounts();
+  const searchedSources = new Set<SearchSource>();
+  const unavailableSources: Partial<Record<SearchSource, string>> = {};
+  let reviewEvidenceCount = 0;
+  let reviewPositiveCandidateCount = 0;
+  for (const item of items) {
+    if (item.review.review_signal_grade === "R1" || item.review.review_signal_grade === "R2") {
+      reviewPositiveCandidateCount += 1;
+    }
+    reviewEvidenceCount += item.review.results.length;
+    for (const source of item.review.searched_sources) searchedSources.add(source);
+    for (const source of ALL_SEARCH_SOURCES) {
+      sourceCounts[source] += item.review.source_counts[source] ?? 0;
+    }
+    for (const [source, reason] of Object.entries(item.review.unavailable_sources) as Array<[SearchSource, string]>) {
+      unavailableSources[source] = reason;
+    }
+  }
+  const totalSearchResults = Object.values(sourceCounts).reduce((sum, count) => sum + count, 0);
+  const unavailableReasons = Object.values(unavailableSources);
+  let likelyIssue: string | null = null;
+  if (items.length > 0 && totalSearchResults === 0 && unavailableReasons.length > 0) {
+    if (unavailableReasons.some((reason) => reason.includes("credentials_missing"))) {
+      likelyIssue = "search_api_credentials_missing_or_not_passed";
+    } else {
+      likelyIssue = "search_api_calls_unavailable";
+    }
+  }
+  return {
+    analyzed_candidate_count: items.length,
+    review_positive_candidate_count: reviewPositiveCandidateCount,
+    review_evidence_count: reviewEvidenceCount,
+    searched_sources: [...searchedSources],
+    source_counts: sourceCounts,
+    unavailable_sources: unavailableSources,
+    likely_issue: likelyIssue
+  };
+}
+
 function recommendationToJson(item: RankedPlace, rank: number): Record<string, unknown> {
   const place = item.place;
   const evidence = bestPositiveEvidence(item.review.results);
@@ -190,7 +260,11 @@ function formatDistance(distanceM: number | undefined): string {
 }
 
 function formatPhone(phone: string | undefined): string {
-  return phone?.trim() || "전화번호 정보 없음";
+  const normalized = phone?.trim();
+  if (!normalized) return "전화번호 정보 없음";
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length < 7) return "전화번호 정보 없음";
+  return normalized;
 }
 
 function bestPositiveEvidence(evidence: ReviewEvidence[]): ReviewEvidence | undefined {
@@ -273,16 +347,28 @@ function buildMessage(
   interpretation: QueryInterpretation,
   recommendations: RankedPlace[],
   notRecommended: RankedPlace[],
+  unverified: RankedPlace[],
   fallbackUsed: boolean
 ): string {
   const lines: string[] = [];
   const categoryLabel = categoryKeyword(interpretation.category) || "장소";
+  const diagnostics = buildSearchDiagnostics([...recommendations, ...notRecommended, ...unverified]);
   lines.push(
     `${interpretation.location} 근처 ${categoryLabel} 후보 중에서 블로그·카페·웹문서 검색 결과에 휠체어 접근성 관련 언급이 있는 장소를 보수적으로 정리했습니다.`
   );
   lines.push("");
   if (recommendations.length === 0) {
-    lines.push("추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.");
+    if (diagnostics.likely_issue === "search_api_credentials_missing_or_not_passed") {
+      lines.push(
+        "검색 API 인증이 배포 서버까지 전달되지 않아 후기 근거를 가져오지 못했습니다. `get_wheelmate_runtime_status`에서 Naver/Kakao 키 설정 여부를 먼저 확인해 주세요."
+      );
+    } else if (diagnostics.likely_issue === "search_api_calls_unavailable") {
+      lines.push(
+        "검색 API 호출이 실패해 후기 근거를 가져오지 못했습니다. 잠시 후 다시 시도하거나 런타임 상태의 unavailable_sources를 확인해 주세요."
+      );
+    } else {
+      lines.push("추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.");
+    }
   } else {
     for (const [index, item] of recommendations.entries()) {
       const place = item.place;
@@ -353,10 +439,16 @@ export function buildRecommendResponse(input: {
   fallbackReason: string | null;
   fallbackRecommendations: RankedPlace[];
 }): Record<string, unknown> {
+  const searchDiagnostics = buildSearchDiagnostics([
+    ...input.recommendations,
+    ...input.notRecommended,
+    ...input.unverified
+  ]);
   const messageForUser = buildMessage(
     input.interpretation,
     input.recommendations,
     input.notRecommended,
+    input.unverified,
     input.fallbackUsed
   );
   return {
@@ -378,6 +470,7 @@ export function buildRecommendResponse(input: {
     unverified_omitted_count: Math.max(0, input.unverified.length - 3),
     fallback_used: input.fallbackUsed,
     fallback_reason: input.fallbackReason,
+    search_diagnostics: searchDiagnostics,
     fallback_recommendations: input.fallbackRecommendations.map((item, index) =>
       recommendationToJson(item, index + 1)
     ),

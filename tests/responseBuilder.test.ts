@@ -169,4 +169,87 @@ describe("buildRecommendResponse", () => {
     expect(text).not.toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
     expect(text).not.toContain("접근성 후기 출처 없음");
   });
+
+  it("does not display implausibly short phone numbers", () => {
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "잠실역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "잠실역", lat: 37.51, lng: 127.1 },
+      recommendations: [
+        {
+          ...ranked,
+          place: { ...ranked.place, name: "짧은전화카페", phone: "116" }
+        }
+      ],
+      notRecommended: [],
+      unverified: [],
+      fallbackUsed: false,
+      fallbackReason: null,
+      fallbackRecommendations: []
+    });
+
+    expect(String(response.answer_markdown)).toContain("전화: 전화번호 정보 없음");
+    expect(response.recommendations).toEqual([
+      expect.objectContaining({
+        phone: "전화번호 정보 없음"
+      })
+    ]);
+  });
+
+  it("surfaces search API credential failures when no recommendation can be made", () => {
+    const unverified: RankedPlace = {
+      ...ranked,
+      place: { name: "C카페", category: "cafe", address: "서울", lat: 37.5, lng: 127, distance_m: 120 },
+      review: {
+        ...ranked.review,
+        place_name: "C카페",
+        review_signal_grade: "R4",
+        review_signal_score: 0,
+        positive_signals: [],
+        results: [],
+        searched_sources: ["naver_blog", "daum_blog"],
+        source_counts: { naver_blog: 0, naver_cafe: 0, naver_web: 0, daum_blog: 0, daum_cafe: 0, daum_web: 0 },
+        unavailable_sources: {
+          naver_blog: "naver_credentials_missing_or_disabled",
+          daum_blog: "kakao_credentials_missing_or_daum_disabled"
+        }
+      },
+      official_support_grade: "none",
+      recommendation_status: "unverified",
+      public_support_evidence: [],
+      support_facilities_nearby: []
+    };
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "잠실역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "잠실역", lat: 37.51, lng: 127.1 },
+      recommendations: [],
+      notRecommended: [],
+      unverified: [unverified],
+      fallbackUsed: false,
+      fallbackReason: "no_review_positive_candidates",
+      fallbackRecommendations: []
+    });
+
+    expect(String(response.answer_markdown)).toContain("검색 API 인증이 배포 서버까지 전달되지 않아");
+    expect(response.search_diagnostics).toMatchObject({
+      analyzed_candidate_count: 1,
+      review_positive_candidate_count: 0,
+      likely_issue: "search_api_credentials_missing_or_not_passed",
+      unavailable_sources: {
+        naver_blog: "naver_credentials_missing_or_disabled",
+        daum_blog: "kakao_credentials_missing_or_daum_disabled"
+      }
+    });
+  });
 });

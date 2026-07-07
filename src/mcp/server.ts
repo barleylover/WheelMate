@@ -7,6 +7,7 @@ import {
   type Tool
 } from "@modelcontextprotocol/sdk/types.js";
 import type { AppConfig } from "../config.js";
+import { runtimeStatus } from "../runtimeStatus.js";
 import {
   findNearbySupportFacilities,
   type FindNearbySupportFacilitiesInput
@@ -23,14 +24,14 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자의 원문 질의를 우선 해석해 위치/카테고리/세부 조건을 보정하고, 검색 API 제목/요약문에서 휠체어 접근성 후기 신호를 찾아 보수적으로 추천합니다. 결과의 answer_markdown을 사용자에게 우선 그대로 보여주세요. 재요약하더라도 출처 링크와 거리뷰 링크는 반드시 포함해야 합니다.",
+    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 결과의 answer_markdown을 사용자에게 우선 그대로 보여주세요. 재요약하더라도 출처 링크와 거리뷰 링크는 반드시 포함해야 합니다.",
   inputSchema: {
     type: "object",
     properties: {
       query: {
         type: "string",
         description:
-          "사용자의 원문 질의 전체. 가능하면 항상 그대로 넣으세요. 서버는 query를 기준으로 location/category/preferences를 재검증합니다."
+          "사용자의 원문 질의 전체. 가능하면 항상 그대로 넣으세요. location/category/preferences가 비어 있거나 불완전할 때 서버가 보완에 사용합니다."
       },
       location: { type: "string", description: "예: 홍대입구역, 강남역, 서울시청. query에 명확히 포함되어 있으면 생략 가능" },
       category: {
@@ -43,7 +44,7 @@ const recommendTool: Tool = {
         type: "array",
         items: { type: "string" },
         description:
-          "접근성 조건과 세부 장소/음식 조건. 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터, 마라탕, 라멘, 햄버거, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성은 넣지 마세요. query와 충돌하면 서버는 query를 우선합니다."
+          "사용자가 명시한 구체적인 조건만 넣으세요. 접근성 조건 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터. 세부 장소/음식 조건 예: 마라탕, 라멘, 햄버거, 횟집, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성/좋은/추천은 넣지 마세요."
       }
     },
     required: [],
@@ -85,7 +86,19 @@ const supportFacilitiesTool: Tool = {
   }
 };
 
-const tools = [recommendTool, searchReviewsTool, supportFacilitiesTool];
+const runtimeStatusTool: Tool = {
+  name: "get_wheelmate_runtime_status",
+  description:
+    "현재 MCP 서버의 빌드 SHA, 검색 API 키 설정 여부, 활성 검색 소스, 경고를 확인합니다. 비밀키 값은 반환하지 않습니다. 배포/도구함 문제를 진단할 때 먼저 호출하세요.",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false
+  }
+};
+
+const tools = [recommendTool, searchReviewsTool, supportFacilitiesTool, runtimeStatusTool];
 
 function jsonResult(value: unknown): CallToolResult {
   return {
@@ -192,6 +205,10 @@ export function createMcpServer(config: AppConfig): Server {
           limit: readNumber(args, "limit")
         };
         return jsonResult(await findNearbySupportFacilities(input, config));
+      }
+
+      if (request.params.name === "get_wheelmate_runtime_status") {
+        return jsonResult(runtimeStatus(config));
       }
 
       return errorResult(`Unknown tool: ${request.params.name}`);

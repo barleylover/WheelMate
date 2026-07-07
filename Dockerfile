@@ -17,8 +17,12 @@ RUN pnpm run ingest
 FROM node:24-slim AS runtime
 
 WORKDIR /app
+ARG WHEELMATE_BUILD_SHA=unknown
+ARG WHEELMATE_BUILD_REF=unknown
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV WHEELMATE_BUILD_SHA=$WHEELMATE_BUILD_SHA
+ENV WHEELMATE_BUILD_REF=$WHEELMATE_BUILD_REF
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile

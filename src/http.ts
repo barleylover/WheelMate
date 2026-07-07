@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import { config } from "./config.js";
 import { configFromAuthorization } from "./auth/playMcpConfigToken.js";
 import { createMcpServer } from "./mcp/server.js";
+import { runtimeStatus } from "./runtimeStatus.js";
 import { logger } from "./utils/logger.js";
 
 const host = process.env.HOST ?? "0.0.0.0";
@@ -19,12 +20,13 @@ app.get("/", (_req: Request, res: Response) => {
   res.status(200).json({
     name: "WheelMate Review Search MCP",
     status: "ok",
-    mcp_endpoint: "/mcp"
+    mcp_endpoint: "/mcp",
+    runtime: runtimeStatus(config)
   });
 });
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json({ status: "ok" });
+  res.status(200).json(runtimeStatus(config));
 });
 
 app.post("/mcp", async (req: Request, res: Response) => {
