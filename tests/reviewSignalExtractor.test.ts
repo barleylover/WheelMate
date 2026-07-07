@@ -42,4 +42,10 @@ describe("extractSignalsFromText", () => {
 
     expect(signals.some((signal) => signal.polarity === "positive" && signal.type === "wheelchair_direct")).toBe(true);
   });
+
+  it("does not treat general walking convenience as wheelchair accessibility", () => {
+    const signals = extractSignalsFromText("사당역 도보 3분 거리에 위치해 접근성이 좋아서 비 오는 날에도 이동하기 편한 곳이에요.");
+
+    expect(signals.some((signal) => signal.polarity === "positive")).toBe(false);
+  });
 });

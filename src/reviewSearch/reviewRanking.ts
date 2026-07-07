@@ -30,6 +30,20 @@ export function recommendationStatus(reviewGrade: ReviewSignalGrade, officialGra
   return "unverified";
 }
 
+function hasRecommendationReviewEvidence(item: RankedPlace): boolean {
+  return item.review.results.some((evidence) =>
+    evidence.signals.some((signal) =>
+      signal.polarity === "positive" &&
+      !["basement_or_floor", "stroller_proxy", "unknown"].includes(signal.type)
+    )
+  );
+}
+
+function isReviewBasedRecommendation(item: RankedPlace): boolean {
+  return (item.review.review_signal_grade === "R1" || item.review.review_signal_grade === "R2") &&
+    hasRecommendationReviewEvidence(item);
+}
+
 export function calculateRankingScore(
   reviewGrade: ReviewSignalGrade,
   reviewScore: number,
@@ -64,16 +78,13 @@ export function partitionRankedPlaces(items: RankedPlace[], includeUnverified = 
   unverified: RankedPlace[];
 } {
   const notRecommended = items.filter((item) => item.review.review_signal_grade === "W");
-  const unverified = items.filter(
-    (item) =>
-      (item.review.review_signal_grade === "R4" || item.review.review_signal_grade === "R3") &&
-      item.official_support_grade === "none"
+  const unverified = items.filter((item) =>
+    item.review.review_signal_grade !== "W" && !isReviewBasedRecommendation(item)
   );
   const recommendations = sortRankedPlaces(
     items.filter((item) => {
       if (item.review.review_signal_grade === "W") return false;
-      if (!includeUnverified && item.review.review_signal_grade === "R3" && item.official_support_grade === "none") return false;
-      if (!includeUnverified && item.review.review_signal_grade === "R4" && item.official_support_grade === "none") return false;
+      if (!includeUnverified) return isReviewBasedRecommendation(item);
       return true;
     })
   );

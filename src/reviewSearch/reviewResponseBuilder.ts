@@ -197,34 +197,33 @@ function bestPositiveEvidence(evidence: ReviewEvidence[]): ReviewEvidence | unde
   return evidence.find((item) => item.signals.some((signal) => signal.polarity === "positive"));
 }
 
+function displayMatchedText(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/이용가능/g, "이용 가능")
+    .replace(/진입가능/g, "진입 가능")
+    .replace(/출입가능/g, "출입 가능")
+    .replace(/접근가능/g, "접근 가능")
+    .trim();
+}
+
 function recommendationReason(item: RankedPlace): string {
   const positive = bestPositiveEvidence(item.review.results);
   const matchedTexts = uniqueMessages(
     positive?.signals
       .filter((signal) => signal.polarity === "positive")
-      .map((signal) => signal.matched_text) ?? []
+      .map((signal) => displayMatchedText(signal.matched_text)) ?? []
   );
   if (matchedTexts.length > 0) {
-    return `${matchedTexts.slice(0, 2).join(", ")} 언급이 있는 후기 신호가 확인됨`;
+    return `${matchedTexts.slice(0, 2).join(", ")} 언급`;
   }
-  if (item.public_support_evidence.length > 0) {
-    return "공공데이터 기반 접근성 보조 근거가 확인됨";
-  }
-  return "접근성 관련 검색 신호가 일부 확인됨";
+  return "검색 API에서 휠체어 접근성 근거 확인 필요";
 }
 
 function recommendationSource(item: RankedPlace, evidence: ReviewEvidence | undefined): Record<string, unknown> {
-  if (!evidence && item.public_support_evidence.length > 0) {
-    const publicEvidence = item.public_support_evidence[0];
-    return {
-      label: publicEvidence.source,
-      detail: truncate(publicEvidence.detail, 80),
-      link: null
-    };
-  }
   if (!evidence) {
     return {
-      label: "접근성 근거 출처 없음",
+      label: "검색 API 접근성 근거 없음",
       detail: null,
       link: null
     };
@@ -370,8 +369,8 @@ export function buildRecommendResponse(input: {
       primary_sort: "review_signal_grade_priority",
       secondary_sort: "review_signal_score_desc",
       tertiary_sort: "distance_asc",
-      grade_priority: ["R1", "R2", "O1", "R3", "C", "R4"],
-      note: "후기 검색 기반 접근성 신호를 우선하고, 공식/공공 보조 근거는 별도 근거로 표시합니다."
+      grade_priority: ["R1", "R2"],
+      note: "정상 추천은 검색 API에서 휠체어 접근성 관련 긍정 신호가 확인된 후보만 포함하고, 장애인 화장실/전동휠체어 충전기 정보는 주변 지원정보로만 표시합니다."
     },
     recommendations: input.recommendations.map((item, index) => recommendationToJson(item, index + 1)),
     not_recommended_places: input.notRecommended.map(cautionToJson),

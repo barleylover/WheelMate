@@ -66,6 +66,11 @@ describe("extractSignalsFromText", () => {
     );
   });
 
+  it("ignores general accessibility wording when it is not about wheelchair access", () => {
+    const signals = extractSignalsFromText("역에서 가까워 접근성이 좋고 비 오는 날에도 이동하기 편한 카페");
+    expect(signals.some((signal) => signal.polarity === "positive")).toBe(false);
+  });
+
   it("removes html tags and entities", () => {
     expect(sanitizeHtmlText("<b>문턱 없음</b> &amp; 엘리베이터 있음")).toBe("문턱 없음 & 엘리베이터 있음");
   });

@@ -3,6 +3,9 @@ import type { RankedPlace } from "../src/types.js";
 import { partitionRankedPlaces, sortRankedPlaces } from "../src/reviewSearch/reviewRanking.js";
 
 function ranked(name: string, grade: RankedPlace["review"]["review_signal_grade"], official: RankedPlace["official_support_grade"], score: number): RankedPlace {
+  const positiveSignals = grade === "R1" || grade === "R2"
+    ? [{ polarity: "positive" as const, strength: "strong" as const, type: "wheelchair_direct" as const, matched_text: "휠체어 이용 가능" }]
+    : [];
   return {
     place: { name, category: "cafe", lat: 0, lng: 0, distance_m: score },
     review: {
@@ -10,10 +13,20 @@ function ranked(name: string, grade: RankedPlace["review"]["review_signal_grade"
       queries_used: [],
       review_signal_grade: grade,
       review_signal_score: score,
-      positive_signals: [],
+      positive_signals: positiveSignals,
       negative_signals: [],
       ambiguous_signals: [],
-      results: [],
+      results: positiveSignals.length > 0
+        ? [{
+          source: "naver_blog",
+          title: name,
+          link: "https://example.com",
+          snippet: "휠체어 이용 가능",
+          date: "20260701",
+          place_match_score: 0.9,
+          signals: positiveSignals
+        }]
+        : [],
       searched_sources: [],
       source_counts: { naver_blog: 0, naver_cafe: 0, naver_web: 0, daum_blog: 0, daum_cafe: 0, daum_web: 0 },
       unavailable_sources: {},
@@ -50,5 +63,15 @@ describe("review ranking", () => {
     expect(partitions.recommendations.map((item) => item.place.name)).toEqual(["good"]);
     expect(partitions.notRecommended.map((item) => item.place.name)).toEqual(["bad"]);
     expect(partitions.unverified.map((item) => item.place.name)).toEqual(["weak", "unknown"]);
+  });
+
+  it("does not recommend public-support-only candidates by default", () => {
+    const partitions = partitionRankedPlaces([
+      ranked("public-only", "R4", "O1", 10),
+      ranked("review", "R1", "none", 10)
+    ]);
+
+    expect(partitions.recommendations.map((item) => item.place.name)).toEqual(["review"]);
+    expect(partitions.unverified.map((item) => item.place.name)).toEqual(["public-only"]);
   });
 });

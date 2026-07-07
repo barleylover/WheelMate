@@ -88,7 +88,7 @@ describe("buildRecommendResponse", () => {
     expect(response).toHaveProperty("answer_markdown");
     expect(response).toHaveProperty("answer_usage_note");
     expect(text).toContain("1순위. A카페");
-    expect(text).toContain("추천 이유: 엘리베이터 있음 언급이 있는 후기 신호가 확인됨");
+    expect(text).toContain("추천 이유: 엘리베이터 있음 언급");
     expect(text).toContain("출처: 네이버 블로그 - [출처 보기](https://example.com)");
     expect(text).toContain("거리: 약 100m");
     expect(text).toContain("전화: 02-123-4567");
@@ -100,7 +100,7 @@ describe("buildRecommendResponse", () => {
     expect(response.recommendations).toEqual([
       expect.objectContaining({
         phone: "02-123-4567",
-        recommendation_reason: "엘리베이터 있음 언급이 있는 후기 신호가 확인됨",
+        recommendation_reason: "엘리베이터 있음 언급",
         source_line: "출처: 네이버 블로그 - [출처 보기](https://example.com)",
         map_link: expect.stringContaining("https://map.kakao.com/link/map/"),
         roadview_link: "https://map.kakao.com/link/roadview/12345",
@@ -121,7 +121,7 @@ describe("buildRecommendResponse", () => {
     expect(text).not.toContain("전국공중화장실표준데이터");
   });
 
-  it("uses public evidence source when review evidence is unavailable", () => {
+  it("does not present public evidence as a recommendation reason", () => {
     const publicOnly: RankedPlace = {
       ...ranked,
       place: { name: "B카페", category: "cafe", address: "서울", lat: 37.5, lng: 127, distance_m: 250 },
@@ -164,8 +164,9 @@ describe("buildRecommendResponse", () => {
       fallbackRecommendations: []
     });
     const text = JSON.stringify(response);
-    expect(text).toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
-    expect(text).toContain("출처: 한국장애인개발원 BF 인증 정보 - 장애물 없는 생활환경 인증 시설로 확인됨");
+    expect(text).toContain("추천 이유: 검색 API에서 휠체어 접근성 근거 확인 필요");
+    expect(text).toContain("출처: 검색 API 접근성 근거 없음");
+    expect(text).not.toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
     expect(text).not.toContain("접근성 후기 출처 없음");
   });
 });

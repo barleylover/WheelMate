@@ -30,8 +30,7 @@ const WEAK_POSITIVE: PatternSpec[] = [
   { pattern: /유(?:모|아)차.{0,10}(?:가능|끌고 가능|들어갈 수|이용 가능|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "weak", type: "stroller_proxy" },
   { pattern: /입구(?:가|는)?\s*(?:넓음|넓고|넓어|넓은)/g, polarity: "positive", strength: "weak", type: "entrance_step" },
   { pattern: /(?:통로|좌석\s*간격|테이블\s*간격)(?:가|이|은)?\s*(?:넓음|넓고|넓어|넓은)/g, polarity: "positive", strength: "weak", type: "seating_or_space" },
-  { pattern: /자동문/g, polarity: "positive", strength: "weak", type: "entrance_step" },
-  { pattern: /이동\s*편함|이동하기\s*편/g, polarity: "positive", strength: "weak", type: "unknown" }
+  { pattern: /자동문/g, polarity: "positive", strength: "weak", type: "entrance_step" }
 ];
 
 const STRONG_NEGATIVE: PatternSpec[] = [
