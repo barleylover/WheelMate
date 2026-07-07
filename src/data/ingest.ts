@@ -13,6 +13,7 @@ import { museumStandardLoader } from "./loaders/museumStandardLoader.js";
 import { publicRestroomLoader } from "./loaders/publicRestroomLoader.js";
 import { socialSecurityDisabilityFacilitiesLoader } from "./loaders/socialSecurityDisabilityFacilitiesLoader.js";
 import { wheelchairChargerLoader } from "./loaders/wheelchairChargerLoader.js";
+import { buildingAccessibilityApiLoader } from "./loaders/buildingAccessibilityApiLoader.js";
 import type { PublicDataLoader } from "./loaders/types.js";
 
 const loaders: PublicDataLoader[] = [
@@ -34,7 +35,11 @@ export const runIngest = async (): Promise<void> => {
   db.init();
   const rawDir = path.resolve(process.cwd(), "data/raw");
 
-  for (const loader of loaders) {
+  // `--api` 플래그가 있을 때만 data.go.kr OpenAPI 로더를 포함한다(개발계정 100콜/일 쿼터 보호).
+  const useApi = process.argv.includes("--api");
+  const activeLoaders = useApi ? [...loaders, buildingAccessibilityApiLoader] : loaders;
+
+  for (const loader of activeLoaders) {
     try {
       const result = await loader.load({ db, rawDir });
       logger.info(`ingest ${result.status}: ${result.source}`, {

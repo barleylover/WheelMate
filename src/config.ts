@@ -1,5 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// MCP 클라이언트가 임의의 cwd 에서 서버를 띄워도 동작하도록, .env 와 DB 상대경로를
+// 프로젝트 루트(이 모듈의 상위 폴더) 기준으로 고정한다. dev(src/)·prod(dist/) 모두 상위가 루트.
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// quiet: dotenv v17 의 "injected env" 안내가 stdout 에 찍히면 MCP stdio JSON-RPC 스트림이 깨진다.
+dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
 
 const boolFromEnv = (value: string | undefined, defaultValue: boolean): boolean => {
   if (value === undefined || value === "") {
@@ -44,7 +51,7 @@ export const loadConfig = (): AppConfig => ({
   useOsm: boolFromEnv(process.env.USE_OSM, true),
   defaultRadiusM: intFromEnv(process.env.DEFAULT_RADIUS_M, 1000),
   defaultLimit: intFromEnv(process.env.DEFAULT_LIMIT, 3),
-  dbPath: path.resolve(process.cwd(), process.env.DB_PATH || "./data/accessibility.db"),
+  dbPath: path.resolve(projectRoot, process.env.DB_PATH || "./data/accessibility.db"),
   overpassApiUrl: process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter",
   httpTimeoutMs: intFromEnv(process.env.HTTP_TIMEOUT_MS, 8000),
   debug: boolFromEnv(process.env.DEBUG, false)
