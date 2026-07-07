@@ -9,8 +9,11 @@ interface PatternSpec {
 }
 
 const STRONG_POSITIVE: PatternSpec[] = [
-  { pattern: /(?:전동)?휠체어.{0,12}(?:출입|입장|진입|접근|이용)\s*(?:가능|괜찮|편함|편해)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,12}(?:출입|입장|진입|접근|이용)(?:이|가)?\s*(?:가능|괜찮|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어\s*(?:이용|사용)(?:이|가)?\s*(?:가능|가능해|가능한|O|○|있음)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,14}(?:들어갈 수|갈 수|이용할 수|탈 수)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,18}(?:손님|고객|이용객).{0,20}(?:매장\s*)?이용\s*(?:잘|가능|편)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,20}(?:오기|방문|이동|접근|입장).{0,10}(?:(?<!불)편한|(?<!불)편해|(?<!불)편함|(?<!불)편하게|무리\s*없이)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:무장애|배리어프리|베리어프리|barrier\s*free)/gi, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:단차|문턱|턱)(?:이|가)?\s*(?:없음|없고|없이|없는|낮음|낮아)/g, polarity: "positive", strength: "strong", type: "entrance_step" },
   { pattern: /(?:계단|스텝)(?:이|가)?\s*(?:없음|없고|없이|없는)/g, polarity: "positive", strength: "strong", type: "stairs" },
@@ -18,11 +21,11 @@ const STRONG_POSITIVE: PatternSpec[] = [
   { pattern: /(?:장애인|다목적|무장애)\s*화장실(?:이|가)?\s*(?:있음|있는|있어서|가능|구비)/g, polarity: "positive", strength: "strong", type: "restroom" },
   { pattern: /화장실.{0,12}(?:휠체어|장애인).{0,8}(?:가능|이용)/g, polarity: "positive", strength: "strong", type: "restroom" },
   { pattern: /장애인\s*주차\s*(?:가능|있음|있는)/g, polarity: "positive", strength: "strong", type: "unknown" },
-  { pattern: /(?:엘리베이터|엘베|승강기)(?:가|는)?\s*(?:있음|있는|있어서|가능|이용)/g, polarity: "positive", strength: "medium", type: "elevator" }
+  { pattern: /(?:엘리베이터|엘베|승강기)(?:가|는)?\s*(?:있음|있는|있어서|있어|가능|이용)/g, polarity: "positive", strength: "medium", type: "elevator" }
 ];
 
 const WEAK_POSITIVE: PatternSpec[] = [
-  { pattern: /유(?:모|아)차.{0,10}(?:가능|끌고 가능|들어갈 수|이용 가능|편함|편해)/g, polarity: "positive", strength: "weak", type: "stroller_proxy" },
+  { pattern: /유(?:모|아)차.{0,10}(?:가능|끌고 가능|들어갈 수|이용 가능|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "weak", type: "stroller_proxy" },
   { pattern: /입구(?:가|는)?\s*(?:넓음|넓고|넓어|넓은)/g, polarity: "positive", strength: "weak", type: "entrance_step" },
   { pattern: /(?:통로|좌석\s*간격|테이블\s*간격)(?:가|이|은)?\s*(?:넓음|넓고|넓어|넓은)/g, polarity: "positive", strength: "weak", type: "seating_or_space" },
   { pattern: /자동문/g, polarity: "positive", strength: "weak", type: "entrance_step" },
@@ -45,6 +48,7 @@ const CAUTION: PatternSpec[] = [
   { pattern: /(?:^|\s)1층(?=\s|$|[,.에은이가의])/g, polarity: "ambiguous", strength: "weak", type: "basement_or_floor" },
   { pattern: /2층|복층/g, polarity: "ambiguous", strength: "weak", type: "basement_or_floor" },
   { pattern: /좁은|좁음|협소/g, polarity: "ambiguous", strength: "weak", type: "narrow_space" },
+  { pattern: /(?:전동)?휠체어.{0,16}불편/g, polarity: "ambiguous", strength: "weak", type: "wheelchair_direct" },
   { pattern: /웨이팅|혼잡/g, polarity: "ambiguous", strength: "weak", type: "unknown" }
 ];
 
@@ -52,10 +56,20 @@ function collectMatches(text: string, specs: PatternSpec[]): ReviewSignal[] {
   const signals: ReviewSignal[] = [];
   for (const spec of specs) {
     for (const match of text.matchAll(spec.pattern)) {
+      const index = match.index ?? 0;
+      const context = text.slice(Math.max(0, index - 18), Math.min(text.length, index + match[0].length + 80));
       if (
         spec.polarity === "negative" &&
         spec.type === "wheelchair_direct" &&
         /휠체어.{0,14}(?:가능|이용)/.test(match[0])
+      ) {
+        continue;
+      }
+      if (
+        spec.polarity === "negative" &&
+        spec.type === "wheelchair_direct" &&
+        /(?:카운터|주문|키오스크)/.test(context) &&
+        /(?:손님|고객|매장).{0,18}이용\s*(?:잘|가능)/.test(context)
       ) {
         continue;
       }

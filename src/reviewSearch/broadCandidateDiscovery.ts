@@ -3,12 +3,13 @@ import { DaumSearchClient } from "../clients/daumSearchClient.js";
 import { KakaoLocalClient } from "../clients/kakaoLocalClient.js";
 import { NaverSearchClient } from "../clients/naverSearchClient.js";
 import { categoryKeyword } from "../core/categoryMapper.js";
-import type { Category, NormalizedSearchResult, Origin, PlaceCandidate, SearchSource, SourceSearchOutcome } from "../types.js";
+import type { Category, NormalizedSearchResult, Origin, PlaceCandidate, ReviewEvidence, SearchSource, SourceSearchOutcome } from "../types.js";
 import { enabledSearchSources } from "./sourceRouter.js";
 import { extractSignals } from "./signalExtractor.js";
 
 const DISCOVERY_ACCESSIBILITY_PATTERN =
   /휠체어|전동휠체어|문턱|단차|턱\s*없|경사로|슬로프|무장애|배리어프리|베리어프리|장애인\s*화장실|엘리베이터|엘베|승강기|유모차/;
+const DISCOVERY_RESULTS_PER_QUERY = 10;
 
 const GENERIC_WORDS = [
   "휠체어",
@@ -43,9 +44,18 @@ const GENERIC_WORDS = [
   "근처",
   "주변",
   "서울",
+  "서울맛집",
+  "서울가볼만한곳",
+  "홍대",
+  "홍대입구",
   "서초",
   "방배동",
+  "연남동",
+  "동교동",
+  "서교동",
   "이수역",
+  "합정역",
+  "마포홍대점",
   "맛집",
   "카페",
   "음식점",
@@ -58,6 +68,17 @@ const GENERIC_WORDS = [
   "브런치",
   "소개팅",
   "소개",
+  "애견동반",
+  "반려견동반",
+  "가성비",
+  "넓고",
+  "편하며",
+  "시그니처",
+  "쑥",
+  "라떼",
+  "디카페인",
+  "감성",
+  "분위기있는",
   "실내데이트",
   "이색데이트",
   "놀거리",
@@ -75,7 +96,9 @@ const GENERIC_WORDS = [
   "좋은",
   "있는",
   "유명한",
-  "만나다"
+  "만나다",
+  "부근",
+  "근처"
 ];
 
 const LOOKUP_GENERIC_WORDS = new Set([
@@ -97,8 +120,28 @@ const LOOKUP_GENERIC_WORDS = new Set([
   "소개",
   "정보",
   "서초",
+  "서울맛집",
+  "서울가볼만한곳",
+  "홍대",
+  "홍대입구",
   "방배동",
+  "연남동",
+  "동교동",
+  "서교동",
   "이수역",
+  "합정역",
+  "마포홍대점",
+  "애견동반",
+  "반려견동반",
+  "가성비",
+  "넓고",
+  "편하며",
+  "시그니처",
+  "쑥",
+  "라떼",
+  "디카페인",
+  "감성",
+  "분위기있는",
   "이색데이트",
   "귀멸의칼날",
   "무화과",
@@ -153,6 +196,8 @@ function candidateLooksUsable(value: string): boolean {
   if (compact.length < 2 || compact.length > 24) return false;
   if (/^\d+$/.test(compact)) return false;
   if (/[.]{2,}|^\(|\)$|^\d{4}[.년]/.test(value)) return false;
+  if (/^(부근|근처|에서|이에요|그리고|있는|좋은|가능한|애견동반|반려견동반)$/.test(compact)) return false;
+  if (/(부근|근처|이에요|했습니다|있습니다|가능했습니다)$/.test(compact)) return false;
   if (DISCOVERY_ACCESSIBILITY_PATTERN.test(compact)) return false;
   return true;
 }
@@ -180,12 +225,15 @@ export function extractBroadCandidateTerms(
   category: Category,
   maxTerms = 3
 ): string[] {
+  const rawTitle = result.title;
   const title = cleanSearchText(result.title);
   const snippet = cleanSearchText(result.snippet);
   const splitParts = title.split(/\s*[-–—/,·•]\s*/).filter(Boolean);
   const phraseCandidates = [
     title,
     ...splitParts,
+    ...Array.from(rawTitle.matchAll(/\[([^\]]{2,40})\]/g)).flatMap((match) => (match[1] ?? "").split(/[\/|｜]/)),
+    ...Array.from(rawTitle.matchAll(/['"‘’“”]([^'"‘’“”]{2,24})['"‘’“”]/g)).map((match) => match[1] ?? ""),
     ...Array.from(`${title} ${snippet}`.matchAll(/(?:카페|식당|음식점|맛집)\s*([가-힣A-Za-z0-9&().·\-\s]{2,18})/g)).map((match) => match[1] ?? ""),
     ...Array.from(`${title} ${snippet}`.matchAll(/([가-힣A-Za-z0-9&().·\-\s]{2,18})\s*(?:카페|식당|음식점)/g)).map((match) => match[1] ?? "")
   ];
@@ -215,11 +263,17 @@ export function buildKakaoLookupTerms(candidateTerm: string, maxTerms = 6): stri
 }
 
 function hasDiscoverySignal(result: NormalizedSearchResult): boolean {
-  const signals = extractSignals(result);
-  if (signals.some((signal) => signal.polarity === "positive" && signal.type !== "basement_or_floor")) {
-    return true;
-  }
-  return DISCOVERY_ACCESSIBILITY_PATTERN.test(`${result.title} ${result.snippet}`);
+  return Boolean(discoveryEvidenceFromResult(result));
+}
+
+function discoveryEvidenceFromResult(result: NormalizedSearchResult): ReviewEvidence | null {
+  const signals = extractSignals(result).filter((signal) => signal.type !== "basement_or_floor");
+  if (!signals.some((signal) => signal.polarity === "positive")) return null;
+  return {
+    ...result,
+    place_match_score: 0.85,
+    signals
+  };
 }
 
 function categoryMatches(place: PlaceCandidate, category: Category): boolean {
@@ -245,6 +299,7 @@ export function mergePlaceCandidates(primary: PlaceCandidate[], secondary: Place
       const existing = merged.find((item) => placeKey(item) === key);
       if (existing) {
         existing.searchAliases = unique([...(existing.searchAliases ?? []), ...(place.searchAliases ?? [])]);
+        existing.discoveryEvidence = uniqueEvidence([...(existing.discoveryEvidence ?? []), ...(place.discoveryEvidence ?? [])]);
       }
       continue;
     }
@@ -254,14 +309,28 @@ export function mergePlaceCandidates(primary: PlaceCandidate[], secondary: Place
   return merged;
 }
 
+function uniqueEvidence(evidence: ReviewEvidence[]): ReviewEvidence[] {
+  const seen = new Set<string>();
+  return evidence.filter((item) => {
+    const key = `${item.source}:${item.link}:${item.snippet}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function searchSource(
   source: SearchSource,
   query: string,
   naver: NaverSearchClient,
   daum: DaumSearchClient
 ): Promise<SourceSearchOutcome> {
-  if (source.startsWith("naver_")) return naver.searchSource(source, query);
-  return daum.searchSource(source, query);
+  if (source === "naver_blog") return naver.searchBlog(query, DISCOVERY_RESULTS_PER_QUERY);
+  if (source === "naver_cafe") return naver.searchCafeArticle(query, DISCOVERY_RESULTS_PER_QUERY);
+  if (source === "naver_web") return naver.searchWeb(query, DISCOVERY_RESULTS_PER_QUERY);
+  if (source === "daum_blog") return daum.searchBlog(query, DISCOVERY_RESULTS_PER_QUERY);
+  if (source === "daum_cafe") return daum.searchCafe(query, DISCOVERY_RESULTS_PER_QUERY);
+  return daum.searchWeb(query, DISCOVERY_RESULTS_PER_QUERY);
 }
 
 export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
@@ -281,16 +350,21 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
   const outcomes = await Promise.all(
     queries.flatMap((query) => sources.map((source) => searchSource(source, query, naver, daum)))
   );
-  const terms = unique(
-    outcomes
-      .flatMap((outcome) => outcome.results)
-      .filter(hasDiscoverySignal)
-      .flatMap((result) => extractBroadCandidateTerms(result, input.location, input.category))
-  ).slice(0, 30);
-  const lookupTerms = unique(terms.flatMap((term) => buildKakaoLookupTerms(term))).slice(0, 80);
+  const termEvidencePairs = outcomes
+    .flatMap((outcome) => outcome.results)
+    .filter(hasDiscoverySignal)
+    .flatMap((result) => {
+      const evidence = discoveryEvidenceFromResult(result);
+      if (!evidence) return [];
+      return extractBroadCandidateTerms(result, input.location, input.category).map((term) => ({ term, evidence }));
+    })
+    .slice(0, 60);
+  const lookupPairs = termEvidencePairs
+    .flatMap(({ term, evidence }) => buildKakaoLookupTerms(term).map((lookupTerm) => ({ term: lookupTerm, evidence })))
+    .slice(0, 160);
 
   const discovered: PlaceCandidate[] = [];
-  for (const term of lookupTerms) {
+  for (const { term, evidence } of lookupPairs) {
     if (discovered.length >= input.limit) break;
     const places = await input.kakaoLocal.keywordSearch(
       `${input.location} ${term}`,
@@ -303,7 +377,8 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
       .filter((place) => categoryMatches(place, input.category))
       .map((place) => ({
         ...place,
-        searchAliases: unique([term, ...(place.searchAliases ?? [])])
+        searchAliases: unique([term, ...(place.searchAliases ?? [])]),
+        discoveryEvidence: uniqueEvidence([evidence, ...(place.discoveryEvidence ?? [])])
       }));
     discovered.push(...matched);
   }

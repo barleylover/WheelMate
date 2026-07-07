@@ -61,6 +61,7 @@ export interface PlaceCandidate extends Coordinates {
   source?: string;
   sourcePlaceId?: string;
   searchAliases?: string[];
+  discoveryEvidence?: ReviewEvidence[];
 }
 
 export interface NormalizedSearchResult {

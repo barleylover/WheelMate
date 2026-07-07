@@ -44,4 +44,61 @@ describe("broad candidate discovery", () => {
 
     expect(terms).toContain("블랑제리 르팡");
   });
+
+  it("extracts place names from bracketed and noisy Hongdae titles", () => {
+    const bracketed = extractBroadCandidateTerms(
+      {
+        title: "[홍대입구역/카페/thefamouslamb] 휠체어 이용 가능 후기",
+        snippet: "엘리베이터가 있어서 휠체어 타신 분들도 이용 가능해보였습니다."
+      },
+      "홍대입구역",
+      "cafe"
+    );
+    const noisy = extractBroadCandidateTerms(
+      {
+        title: "홍대입구역카페 공미학 마포홍대점 시그니처 쑥 라떼",
+        snippet: "장애인 휠체어 이용이 가능한 출입구가 있습니다."
+      },
+      "홍대입구역",
+      "cafe"
+    );
+
+    expect(bracketed).toContain("thefamouslamb");
+    expect(noisy).toContain("공미학");
+  });
+
+  it("keeps discovery evidence when discovered candidates are deduped", () => {
+    const merged = mergePlaceCandidates(
+      [
+        {
+          sourcePlaceId: "1",
+          name: "공미학",
+          category: "cafe",
+          lat: 0,
+          lng: 0,
+          discoveryEvidence: [
+            {
+              source: "naver_blog",
+              title: "홍대입구역카페 공미학 휠체어 후기",
+              link: "https://example.com/1",
+              snippet: "장애인 휠체어 이용이 가능한 출입구가 있습니다.",
+              date: null,
+              place_match_score: 0.85,
+              signals: [
+                {
+                  polarity: "positive",
+                  type: "wheelchair_direct",
+                  matched_text: "휠체어 이용이 가능",
+                  strength: "strong"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      [{ sourcePlaceId: "1", name: "공미학", category: "cafe", lat: 0, lng: 0 }]
+    );
+
+    expect(merged[0]?.discoveryEvidence).toHaveLength(1);
+  });
 });

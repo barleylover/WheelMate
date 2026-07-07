@@ -78,7 +78,7 @@ export class ReviewSearchService {
     const sources = enabledSearchSources(this.config);
     const outcomes = await this.runSearches(queries, sources);
     const relevanceContext = placeToRelevanceContext(place, neighborhood);
-    const evidence: ReviewEvidence[] = outcomes
+    const fetchedEvidence: ReviewEvidence[] = outcomes
       .flatMap((outcome) => outcome.results)
       .map((result) => ({
         ...result,
@@ -98,6 +98,7 @@ export class ReviewSearchService {
         }
         return result;
       });
+    const evidence = this.uniqueEvidence([...(place.discoveryEvidence ?? []), ...fetchedEvidence]);
 
     const score = scoreReviewEvidence(evidence);
     const sourceCounts = this.emptySourceCounts();
@@ -130,6 +131,16 @@ export class ReviewSearchService {
       ],
       attribution: sourceAttribution(sources)
     };
+  }
+
+  private uniqueEvidence(evidence: ReviewEvidence[]): ReviewEvidence[] {
+    const seen = new Set<string>();
+    return evidence.filter((item) => {
+      const key = `${item.source}:${item.link}:${item.snippet}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   private async runSearches(queries: string[], sources: SearchSource[]): Promise<SourceSearchOutcome[]> {
