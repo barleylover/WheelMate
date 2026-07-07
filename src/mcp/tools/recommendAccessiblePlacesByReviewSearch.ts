@@ -152,6 +152,11 @@ const CONTENT_OR_CATEGORY_TERMS = [
   "해산물",
   "횟집",
   "해물",
+  "조개구이",
+  "양꼬치",
+  "닭강정",
+  "한정식",
+  "훠궈",
   "마라탕",
   "라멘",
   "라면",
@@ -220,16 +225,80 @@ const EXACT_CONTENT_TERMS = new Set([
   "중국집",
   "치킨집",
   "타코집",
-  "빵집"
+  "빵집",
+  "술집",
+  "찻집"
 ]);
 
 const ALLOWED_SHORT_CONTENT_TERMS = new Set(["회"]);
+
+const REGION_LOCATION_TOKENS = new Set([
+  "서울",
+  "부산",
+  "대구",
+  "인천",
+  "광주",
+  "대전",
+  "울산",
+  "세종",
+  "제주",
+  "경기",
+  "강원",
+  "충북",
+  "충남",
+  "전북",
+  "전남",
+  "경북",
+  "경남"
+]);
+
+const KNOWN_AREA_LOCATION_TOKENS = new Set([
+  "강남",
+  "홍대",
+  "신촌",
+  "사당",
+  "성수",
+  "잠실",
+  "청담",
+  "압구정",
+  "명동",
+  "종로",
+  "이태원",
+  "여의도",
+  "서면",
+  "해운대",
+  "주안",
+  "부평",
+  "동성로",
+  "수원",
+  "전주",
+  "대학로",
+  "건대",
+  "왕십리",
+  "연남",
+  "합정",
+  "망원",
+  "상수",
+  "을지로",
+  "인사동",
+  "판교",
+  "용산",
+  "서울숲",
+  "충장로",
+  "제주시",
+  "서귀포"
+]);
+
+function hasLocationSuffix(value: string): boolean {
+  return /(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점)$/.test(value);
+}
 
 function normalizeContentTerm(preference: string): string {
   const compact = preference
     .trim()
     .replace(/\s+/g, "");
   if (EXACT_CONTENT_TERMS.has(compact)) return compact;
+  if ([...EXACT_CONTENT_TERMS].some((term) => compact.endsWith(term))) return compact;
   return compact
     .replace(/(?:으로|로)?(?:갈만한|가기좋은|접근가능한|이용가능한)$/g, "")
     .replace(/(?:맛집|전문점|집|가게)$/g, "");
@@ -240,8 +309,20 @@ function expandContentTerm(term: string): string[] {
 }
 
 function removeSubsumedContentTerms(terms: string[]): string[] {
+  const subsumableGenericTerms = new Set(["버거", "햄버거", "카페", "식당", "음식점", "술집", "찻집"]);
+  const genericCategorySuffixes = ["카페", "식당", "음식점"];
   return terms.filter((term) => {
     if (ALLOWED_SHORT_CONTENT_TERMS.has(term)) return true;
+    if (
+      genericCategorySuffixes.some((suffix) => term.endsWith(suffix)) &&
+      terms.some((other) => other !== term && other.length >= 2 && term.includes(other))
+    ) {
+      return false;
+    }
+    if (terms.some((other) => other === `${term}집` || other === `${term}전문점` || other === `${term}가게`)) {
+      return false;
+    }
+    if (!subsumableGenericTerms.has(term)) return true;
     return !terms.some((other) => other !== term && other.length > term.length && other.includes(term));
   });
 }
@@ -265,7 +346,8 @@ function stripQueryNoise(value: string): string {
     .replace(/[?!.,]/g, " ")
     .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
     .replace(/전동휠체어/g, " ")
-    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|쪽|에서|으로|로|에|의|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게)/g, " ")
+    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|괜찮은|갈만한|갈\s*수|살\s*수\s*있나|가기좋은|가기|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|말고|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게|좌석|아기랑|유모차랑|유모차|혼밥|있는|데)/g, " ")
+    .replace(/(?:^|\s)(?:쪽|에서|으로|로|에|의)(?=\s|$)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -287,16 +369,45 @@ function cleanLocationCandidate(value: string): string | undefined {
 
 function locationCandidateLooksPlausible(location: string): boolean {
   const compact = compactText(location);
-  if (/(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점)$/.test(compact)) {
+  if (hasLocationSuffix(compact)) {
     return true;
   }
-  if (/(?:서울|부산|대구|인천|광주|대전|울산|세종|제주|경기|강원|충북|충남|전북|전남|경북|경남)/.test(compact)) {
-    return true;
-  }
-  if (/(?:강남|홍대|신촌|사당|성수|잠실|청담|압구정|명동|종로|이태원|여의도|서면|해운대|주안|부평|동성로|수원|전주|대학로|건대|왕십리|연남|합정|망원|상수|을지로|제주시|서귀포)/.test(compact)) {
+  const tokens = location.split(/\s+/).filter(Boolean);
+  if (tokens.some((token) => REGION_LOCATION_TOKENS.has(token) || KNOWN_AREA_LOCATION_TOKENS.has(token))) {
     return true;
   }
   return false;
+}
+
+function normalizeLocationToken(token: string): string {
+  const stripped = token.replace(/(?:에서|으로|에|의)$/, "");
+  if (stripped !== token && (REGION_LOCATION_TOKENS.has(stripped) || KNOWN_AREA_LOCATION_TOKENS.has(stripped) || hasLocationSuffix(stripped))) {
+    return stripped;
+  }
+  return token;
+}
+
+function inferPrefixLocationFromText(value: string): string | undefined {
+  const stripped = stripQueryNoise(value);
+  const tokens = stripped.split(/\s+/).filter(Boolean).map(normalizeLocationToken);
+  if (tokens.length === 0) return undefined;
+  const first = tokens[0] ?? "";
+  const second = tokens[1] ?? "";
+  if (REGION_LOCATION_TOKENS.has(first)) {
+    const suffixIndex = tokens.slice(1, 4).findIndex((token) => hasLocationSuffix(token));
+    if (suffixIndex >= 0) {
+      return tokens.slice(0, suffixIndex + 2).join(" ");
+    }
+    if (second && (KNOWN_AREA_LOCATION_TOKENS.has(second) || hasLocationSuffix(second))) {
+      return `${first} ${second}`;
+    }
+    return first;
+  }
+  if (KNOWN_AREA_LOCATION_TOKENS.has(first) || hasLocationSuffix(first)) {
+    if (second && hasLocationSuffix(second)) return `${first} ${second}`;
+    return first;
+  }
+  return undefined;
 }
 
 function inferLocationBeforeTrailingTarget(query: string): string | undefined {
@@ -311,22 +422,26 @@ function inferLocationBeforeTrailingTarget(query: string): string | undefined {
 export function inferLocationFromQuery(query?: string): string | undefined {
   if (!query) return undefined;
   const normalized = query.replace(/\s+/g, " ").trim();
-  const beforeTrailingTarget = inferLocationBeforeTrailingTarget(normalized);
-  if (beforeTrailingTarget) return beforeTrailingTarget;
+  const suffixMatch = normalized.match(
+    /([가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,4}?(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점))(?=\s|$)/
+  );
+  const suffixLocation = cleanLocationCandidate(suffixMatch?.[1] ?? "");
+  if (suffixLocation) return suffixLocation;
 
   const keywordPositions = CONTENT_OR_CATEGORY_TERMS
     .map((term) => normalized.indexOf(term))
     .filter((index) => index > 0);
   if (keywordPositions.length > 0) {
     const beforeTarget = normalized.slice(0, Math.min(...keywordPositions));
+    const prefix = inferPrefixLocationFromText(beforeTarget);
+    if (prefix) return prefix;
     const cleaned = cleanLocationCandidate(beforeTarget);
-    if (cleaned) return cleaned;
+    if (cleaned && locationCandidateLooksPlausible(cleaned)) return cleaned;
   }
 
-  const suffixMatch = normalized.match(
-    /([가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,4}?(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점))/
-  );
-  return cleanLocationCandidate(suffixMatch?.[1] ?? "");
+  const prefixLocation = inferPrefixLocationFromText(normalized);
+  if (prefixLocation) return prefixLocation;
+  return inferLocationBeforeTrailingTarget(normalized);
 }
 
 function resolveInputLocation(inputLocation: string | undefined, query?: string): string {
@@ -337,15 +452,22 @@ function resolveInputLocation(inputLocation: string | undefined, query?: string)
   throw new Error("location is required or must be inferable from query");
 }
 
+function focusedQueryTargetClause(query: string | undefined): string | undefined {
+  if (!query) return undefined;
+  const parts = query.split(/말고/);
+  return (parts.length > 1 ? parts[parts.length - 1] : query)?.trim();
+}
+
 export function inferCategoryFromQuery(query: string | undefined, fallback: Category): Category {
-  if (!query) return fallback;
-  if (/장애인\s*화장실|화장실/.test(query)) return "restroom";
-  if (/전동휠체어\s*충전|충전기/.test(query)) return "charger";
-  if (/박물관|미술관/.test(query)) return "museum";
-  if (/영화관|공연장|도서관|전시관/.test(query)) return "culture";
-  if (/카페|커피|베이커리|빵집|디저트|브런치/.test(query)) return "cafe";
+  const targetQuery = focusedQueryTargetClause(query);
+  if (!targetQuery) return fallback;
+  if (/장애인\s*화장실|화장실/.test(targetQuery)) return "restroom";
+  if (/전동휠체어\s*충전|충전기/.test(targetQuery)) return "charger";
+  if (/박물관|미술관/.test(targetQuery)) return "museum";
+  if (/영화관|공연장|도서관|전시관|연극/.test(targetQuery)) return "culture";
+  if (/카페|커피|베이커리|빵집|디저트|브런치|찻집/.test(targetQuery)) return "cafe";
   if (
-    /음식점|식당|맛집|횟집|생선회|해산물|해물|(?:^|\s)회(?:\s|$)|마라탕|라멘|라면|초밥|스시|포케|파스타|피자|햄버거|버거|샌드위치|샐러드|한식|중식|일식|양식|분식|삼겹살|갈비|국밥|칼국수|냉면|김밥|떡볶이|고깃집|고기집|중국집|치킨집|타코|브리또|비건|채식/.test(query)
+    /음식점|식당|맛집|술집|횟집|회센터|생선회|해산물|해물|(?:^|\s)회(?:\s|$)|조개구이|양꼬치|닭강정|한정식|마라탕|훠궈|라멘|라면|초밥|스시|포케|파스타|피자|햄버거|버거|샌드위치|샐러드|한식|중식|일식|양식|분식|삼겹살|갈비|국밥|칼국수|냉면|김밥|떡볶이|쌀국수|돈까스|돈가스|고깃집|고기집|중국집|치킨집|타코|브리또|비건|채식/.test(targetQuery)
   ) {
     return "restaurant";
   }
@@ -394,6 +516,9 @@ const CONCRETE_CONTENT_TERMS = [
   "타코집",
   "타코",
   "브리또",
+  "술집",
+  "찻집",
+  "연극",
   "비건",
   "채식",
   "약국",
@@ -432,8 +557,12 @@ function inferFreeformContentTermsFromQuery(query: string, location?: string): s
   const stripped = stripQueryToPotentialTargets(query, location);
   if (!stripped) return [];
   const tokenTerms = stripped.split(/\s+/).filter(Boolean);
+  const allTokensAreKnown = tokenTerms.every((term) => CONCRETE_CONTENT_TERMS.includes(term) || Boolean(CONTENT_SYNONYMS[term]));
+  if (allTokensAreKnown) {
+    return uniqueContentTerms(tokenTerms.filter((term) => !ACCESSIBILITY_OR_GENERIC_TERMS.has(term)));
+  }
   const phrase = tokenTerms.join(" ");
-  return uniqueContentTerms([phrase, ...tokenTerms].filter((term) => !ACCESSIBILITY_OR_GENERIC_TERMS.has(term)));
+  return uniqueContentTerms([(phrase || tokenTerms[0]) ?? ""].filter((term) => !ACCESSIBILITY_OR_GENERIC_TERMS.has(term)));
 }
 
 function uniqueContentTerms(terms: string[]): string[] {
@@ -441,16 +570,20 @@ function uniqueContentTerms(terms: string[]): string[] {
 }
 
 function inferContentPreferencesFromQuery(query?: string, location?: string): string[] {
-  if (!query) return [];
-  const explicitTypeTerms = Array.from(query.matchAll(/([가-힣A-Za-z0-9]{2,12})(?:집|전문점|가게)/g)).map(
+  const targetQuery = focusedQueryTargetClause(query);
+  if (!targetQuery) return [];
+  const targetContentText = stripQueryToPotentialTargets(targetQuery, location);
+  const explicitTypeTerms = Array.from(targetContentText.matchAll(/([가-힣A-Za-z0-9]{2,12})(?:집|전문점|가게)/g)).map(
     (match) => match[1] ?? ""
   );
-  const shortRawFishTerms = /(?:^|\s)회(?:\s|$)/.test(query) ? ["회"] : [];
+  const shortRawFishTerms = /(?:^|\s)회(?:\s|$)/.test(targetContentText) ? ["회"] : [];
   const inferred = [
-    ...CONCRETE_CONTENT_TERMS.filter((term) => query.includes(term)),
+    ...CONCRETE_CONTENT_TERMS
+      .filter((term) => targetContentText.includes(term))
+      .sort((a, b) => targetContentText.indexOf(a) - targetContentText.indexOf(b)),
     ...shortRawFishTerms,
     ...explicitTypeTerms,
-    ...inferFreeformContentTermsFromQuery(query, location)
+    ...inferFreeformContentTermsFromQuery(targetContentText)
   ];
   if (inferred.includes("스시") && !inferred.includes("초밥")) inferred.push("초밥");
   if (inferred.includes("초밥") && !inferred.includes("스시")) inferred.push("스시");
@@ -536,10 +669,19 @@ async function searchContentSpecificLocalCandidates(input: {
 }): Promise<PlaceCandidate[]> {
   if (input.contentPreferences.length === 0) return [];
   const terms = input.contentPreferences.slice(0, 3);
+  const searchVariantsForTerm = (term: string): string[] => {
+    const variants = [
+      term,
+      term.replace(/(카페|식당|음식점|술집|찻집)$/, " $1"),
+      term.replace(/동반(카페|식당|음식점|술집|찻집)$/, "동반 $1"),
+      term.replace(/반려동물동반/, "애견동반").replace(/(카페|식당|음식점|술집|찻집)$/, " $1")
+    ].map((value) => value.trim()).filter(Boolean);
+    return [...new Set(variants)].slice(0, 3);
+  };
   const results = await Promise.all(
-    terms.map(async (term) => {
+    terms.flatMap((term) => searchVariantsForTerm(term).map((searchTerm) => ({ term, searchTerm }))).map(async ({ term, searchTerm }) => {
       const places = await input.kakaoLocal.keywordSearch(
-        `${input.location} ${term}`,
+        `${input.location} ${searchTerm}`,
         input.origin.lng,
         input.origin.lat,
         input.radiusM,

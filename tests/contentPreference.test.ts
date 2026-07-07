@@ -121,6 +121,93 @@ describe("contentSearchPreferences", () => {
     expect(restaurant.contentPreferences).toEqual([]);
   });
 
+  it("handles creative location and target edge cases without polluting location", () => {
+    const cases = [
+      {
+        query: "연남동 비건 브런치 휠체어로 갈 수 있는 곳",
+        location: "연남동",
+        category: "cafe",
+        content: ["비건", "채식", "브런치"]
+      },
+      {
+        query: "서울숲 근처 반려동물 동반 카페 휠체어 가능",
+        location: "서울숲",
+        category: "cafe",
+        content: ["반려동물동반카페"]
+      },
+      {
+        query: "제주공항 근처 아기랑 가기 좋은 베이커리 휠체어",
+        location: "제주공항",
+        category: "cafe",
+        content: ["베이커리", "빵집"]
+      },
+      {
+        query: "을지로 루프탑 술집 휠체어 괜찮은 데",
+        location: "을지로",
+        category: "restaurant",
+        content: ["루프탑술집"]
+      },
+      {
+        query: "대학로 연극 휠체어 좌석",
+        location: "대학로",
+        category: "culture",
+        content: ["연극"]
+      },
+      {
+        query: "여의도 IFC몰 휠체어 접근 가능한 디저트카페",
+        location: "여의도 IFC몰",
+        category: "cafe",
+        content: ["디저트"]
+      },
+      {
+        query: "판교 현대백화점 유모차랑 휠체어 가능한 카페",
+        location: "판교 현대백화점",
+        category: "cafe",
+        content: []
+      },
+      {
+        query: "인사동 전통찻집 휠체어 접근 가능한 곳",
+        location: "인사동",
+        category: "cafe",
+        content: ["전통찻집"]
+      },
+      {
+        query: "서울대입구역 혼밥 가능한 돈까스 휠체어",
+        location: "서울대입구역",
+        category: "restaurant",
+        content: ["돈까스", "돈가스"]
+      }
+    ];
+
+    for (const item of cases) {
+      const intent = resolveRecommendSearchIntent(
+        { query: item.query },
+        { defaultRadiusM: 800, defaultLimit: 5 }
+      );
+      expect(intent.location).toBe(item.location);
+      expect(intent.category).toBe(item.category);
+      expect(intent.contentPreferences).toEqual(item.content);
+    }
+  });
+
+  it("uses the clause after '말고' as the concrete target", () => {
+    const bookstore = resolveRecommendSearchIntent(
+      { query: "홍대입구역 카페 말고 조용한 서점 휠체어" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+    const riceNoodles = resolveRecommendSearchIntent(
+      { query: "수원 행궁동 파스타 말고 쌀국수 휠체어" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(bookstore.location).toBe("홍대입구역");
+    expect(bookstore.category).toBe("any");
+    expect(bookstore.contentPreferences).toEqual(["서점"]);
+    expect(riceNoodles.location).toBe("수원 행궁동");
+    expect(riceNoodles.category).toBe("restaurant");
+    expect(riceNoodles.contentPreferences).toEqual(["쌀국수", "베트남"]);
+  });
+
   it("falls back to parsed preferences when a query has no concrete target term", () => {
     const intent = resolveRecommendSearchIntent(
       {
