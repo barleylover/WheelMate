@@ -23,11 +23,15 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자 위치와 카테고리를 받아 주변 장소 후보를 만들고, 검색 API 제목/요약문에서 휠체어 접근성 후기 신호를 찾아 보수적으로 추천합니다.",
+    "사용자의 원문 질의를 우선 해석해 위치/카테고리/세부 조건을 보정하고, 검색 API 제목/요약문에서 휠체어 접근성 후기 신호를 찾아 보수적으로 추천합니다.",
   inputSchema: {
     type: "object",
     properties: {
-      query: { type: "string", description: "사용자의 원문 질의" },
+      query: {
+        type: "string",
+        description:
+          "사용자의 원문 질의 전체. 가능하면 항상 그대로 넣으세요. 서버는 query를 기준으로 location/category/preferences를 재검증합니다."
+      },
       location: { type: "string", description: "예: 홍대입구역, 강남역, 서울시청. query에 명확히 포함되어 있으면 생략 가능" },
       category: {
         type: "string",
@@ -39,7 +43,7 @@ const recommendTool: Tool = {
         type: "array",
         items: { type: "string" },
         description:
-          "접근성 조건과 세부 장소/음식 조건. 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터, 마라탕, 라멘, 햄버거, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성은 넣지 않아도 됩니다."
+          "접근성 조건과 세부 장소/음식 조건. 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터, 마라탕, 라멘, 햄버거, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성은 넣지 마세요. query와 충돌하면 서버는 query를 우선합니다."
       }
     },
     required: [],

@@ -236,14 +236,7 @@ export function inferLocationFromQuery(query?: string): string | undefined {
 function resolveInputLocation(inputLocation: string | undefined, query?: string): string {
   const explicit = inputLocation?.trim();
   const inferred = inferLocationFromQuery(query);
-  if (!explicit && inferred) return inferred;
-  if (explicit && inferred) {
-    const explicitCompact = compactText(explicit);
-    const inferredCompact = compactText(inferred);
-    if (inferredCompact.length > explicitCompact.length && inferredCompact.includes(explicitCompact)) {
-      return inferred;
-    }
-  }
+  if (inferred) return inferred;
   if (explicit) return explicit;
   throw new Error("location is required or must be inferable from query");
 }
@@ -326,6 +319,40 @@ function inferContentPreferencesFromQuery(query?: string): string[] {
   return inferred;
 }
 
+export function resolveRecommendSearchIntent(
+  input: RecommendAccessiblePlacesInput,
+  defaults: { defaultRadiusM: number; defaultLimit: number }
+): {
+  location: string;
+  category: Category;
+  radiusM: number;
+  limit: number;
+  preferences: string[];
+  unsupportedPreferences: string[];
+  contentPreferences: string[];
+  searchPreferences: string[];
+} {
+  const location = resolveInputLocation(input.location, input.query);
+  const category = inferCategoryFromQuery(input.query, normalizeCategory(input.category));
+  const radiusM = input.radius_m ?? defaults.defaultRadiusM;
+  const limit = input.limit ?? defaults.defaultLimit;
+  const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
+  const queryContentPreferences = inferContentPreferencesFromQuery(input.query);
+  const contentPreferenceSource =
+    input.query && queryContentPreferences.length > 0 ? queryContentPreferences : unsupportedPreferences;
+  const contentPreferences = contentSearchPreferences(contentPreferenceSource);
+  return {
+    location,
+    category,
+    radiusM,
+    limit,
+    preferences,
+    unsupportedPreferences,
+    contentPreferences,
+    searchPreferences: [...preferences, ...contentPreferences]
+  };
+}
+
 function placeMatchesContentPreferences(place: { name: string; category: string | Category; searchAliases?: string[]; discoveryEvidence?: Array<{ title: string; snippet: string }> }, preferences: string[]): boolean {
   if (preferences.length === 0) return true;
   const text = [
@@ -378,16 +405,19 @@ export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
 ): Promise<Record<string, unknown>> {
-  const location = resolveInputLocation(input.location, input.query);
-  const category = inferCategoryFromQuery(input.query, normalizeCategory(input.category));
-  const radiusM = input.radius_m ?? config.defaultRadiusM;
-  const limit = input.limit ?? config.defaultLimit;
-  const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
-  const contentPreferences = contentSearchPreferences([
-    ...unsupportedPreferences,
-    ...inferContentPreferencesFromQuery(input.query)
-  ]);
-  const searchPreferences = [...preferences, ...contentPreferences];
+  const {
+    location,
+    category,
+    radiusM,
+    limit,
+    preferences,
+    unsupportedPreferences,
+    contentPreferences,
+    searchPreferences
+  } = resolveRecommendSearchIntent(input, {
+    defaultRadiusM: config.defaultRadiusM,
+    defaultLimit: config.defaultLimit
+  });
   const interpretation = {
     location,
     category,
