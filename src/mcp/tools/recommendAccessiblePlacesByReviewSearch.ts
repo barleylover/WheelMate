@@ -62,10 +62,70 @@ function preferenceBonus(
 
 function contentSearchPreferences(preferences: string[]): string[] {
   const generic = new Set(["조용한", "분위기", "분위기좋은", "넓은", "맛있는", "좋은"]);
-  return preferences
+  return [...new Set(preferences)]
     .map((preference) => preference.trim())
     .filter((preference) => preference.length >= 2 && !generic.has(preference))
     .slice(0, 3);
+}
+
+function inferContentPreferencesFromQuery(query?: string): string[] {
+  if (!query) return [];
+  const terms = [
+    "마라탕",
+    "라멘",
+    "라면",
+    "초밥",
+    "스시",
+    "포케",
+    "파스타",
+    "피자",
+    "햄버거",
+    "버거",
+    "샌드위치",
+    "샐러드",
+    "베이커리",
+    "빵집",
+    "디저트",
+    "브런치",
+    "한식",
+    "중식",
+    "일식",
+    "양식",
+    "분식",
+    "삼겹살",
+    "갈비",
+    "국밥",
+    "칼국수",
+    "냉면",
+    "김밥",
+    "떡볶이",
+    "비건",
+    "채식",
+    "약국",
+    "병원",
+    "서점",
+    "영화관",
+    "공연장",
+    "도서관",
+    "미술관",
+    "박물관",
+    "전시관",
+    "쇼핑몰",
+    "백화점",
+    "마트",
+    "편의점",
+    "은행",
+    "미용실",
+    "헬스장",
+    "공원"
+  ];
+  const inferred = terms.filter((term) => query.includes(term));
+  if (inferred.includes("스시") && !inferred.includes("초밥")) inferred.push("초밥");
+  if (inferred.includes("초밥") && !inferred.includes("스시")) inferred.push("스시");
+  if (inferred.includes("베이커리") && !inferred.includes("빵집")) inferred.push("빵집");
+  if (inferred.includes("빵집") && !inferred.includes("베이커리")) inferred.push("베이커리");
+  if (inferred.includes("햄버거") && !inferred.includes("버거")) inferred.push("버거");
+  return inferred;
 }
 
 function placeMatchesContentPreferences(place: { name: string; category: string | Category; searchAliases?: string[]; discoveryEvidence?: Array<{ title: string; snippet: string }> }, preferences: string[]): boolean {
@@ -100,14 +160,18 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const radiusM = input.radius_m ?? config.defaultRadiusM;
   const limit = input.limit ?? config.defaultLimit;
   const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
-  const contentPreferences = contentSearchPreferences(unsupportedPreferences);
+  const contentPreferences = contentSearchPreferences([
+    ...unsupportedPreferences,
+    ...inferContentPreferencesFromQuery(input.query)
+  ]);
   const searchPreferences = [...preferences, ...contentPreferences];
   const interpretation = {
     location: input.location,
     category,
     radius_m: radiusM,
     preferences,
-    unsupported_preferences: unsupportedPreferences
+    unsupported_preferences: unsupportedPreferences,
+    content_preferences: contentPreferences
   };
 
   const kakaoLocal = new KakaoLocalClient(config);

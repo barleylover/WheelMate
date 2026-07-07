@@ -155,4 +155,5 @@ export interface QueryInterpretation {
   radius_m: number;
   preferences: string[];
   unsupported_preferences: string[];
+  content_preferences?: string[];
 }

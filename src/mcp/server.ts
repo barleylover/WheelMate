@@ -38,7 +38,8 @@ const recommendTool: Tool = {
       preferences: {
         type: "array",
         items: { type: "string" },
-        description: "예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터"
+        description:
+          "접근성 조건과 세부 장소/음식 조건. 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터, 마라탕, 라멘, 초밥, 포케, 베이커리, 약국, 서점, 영화관"
       }
     },
     required: ["location"],
