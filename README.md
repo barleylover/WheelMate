@@ -105,6 +105,16 @@ docker build -t wheelmate-review-search-mcp .
 docker run --env-file .env -p 8080:8080 wheelmate-review-search-mcp
 ```
 
+GitHub Container Registry image registration values after the GitHub Actions workflow succeeds:
+
+```text
+Registry host: ghcr.io
+image_name: barleylover/wheelmate
+image_tag: review-search-mcp
+```
+
+If the package is private, enter a GitHub username and a token with package read permission in the registry credential fields. If the package is public, leave the registry credential fields empty.
+
 ### `recommend_accessible_places_by_review_search`
 
 Finds nearby candidates with Kakao Local, searches review/web snippets, extracts accessibility signals, and returns ranked recommendations.
