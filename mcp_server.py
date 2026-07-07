@@ -169,10 +169,11 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     if method == "initialize":
+        requested_version = params.get("protocolVersion") or "2025-03-26"
         return response(
             request_id,
             {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": requested_version,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "seocho-accessibility-mcp", "version": "0.1.0"},
             },
