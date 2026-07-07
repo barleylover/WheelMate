@@ -8,9 +8,21 @@ describe("kakao links", () => {
     );
   });
 
-  it("place_url 이 없으면 이름 검색 링크로 대체한다", () => {
+  it("place_url 이 없고 주소도 없으면 이름 검색 링크로 대체한다", () => {
     expect(kakaoMapLink("동네카페")).toBe(
       `https://map.kakao.com/?q=${encodeURIComponent("동네카페")}`
+    );
+  });
+
+  it("place_url 이 없지만 주소가 있으면 '주소 + 이름' 으로 정확히 검색한다", () => {
+    expect(kakaoMapLink("동네카페", undefined, "서울 마포구 양화로 1")).toBe(
+      `https://map.kakao.com/?q=${encodeURIComponent("서울 마포구 양화로 1 동네카페")}`
+    );
+  });
+
+  it("place_url 이 있으면 주소가 있어도 장소 페이지(https)를 우선한다", () => {
+    expect(kakaoMapLink("스노우마운틴", "http://place.map.kakao.com/12345", "서울 마포구 양화로 1")).toBe(
+      "https://place.map.kakao.com/12345"
     );
   });
 

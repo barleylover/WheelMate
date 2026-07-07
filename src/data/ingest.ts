@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { WheelMateDatabase } from "./db.js";
@@ -50,6 +51,9 @@ export const runIngest = async (): Promise<void> => {
   db.close();
 };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Windows 에서 process.argv[1] 은 백슬래시 경로라 `file://${argv}` 비교가 깨진다.
+// pathToFileURL 로 정규화해 크로스플랫폼으로 "직접 실행" 여부를 판별한다.
+const entryArg = process.argv[1];
+if (entryArg && import.meta.url === pathToFileURL(entryArg).href) {
   await runIngest();
 }

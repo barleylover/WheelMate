@@ -6,6 +6,10 @@ dist/
 
 data/*.db
 data/*.db-*
+# 내려받은 공공데이터 raw 파일은 커밋하지 않는다(용량/라이선스). 예시 파일과 .gitkeep 만 유지.
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/*.example.json
 logs/
 coverage/
 .DS_Store

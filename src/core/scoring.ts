@@ -102,10 +102,59 @@ const supportBonus = (supportFacilities: SupportFacility[], suppressRestroom: bo
   return bonus;
 };
 
+/**
+ * 등급 판정 우선순위(요청 사양):
+ *   A: BF 인증
+ *   B: 경사로·승강기·장애인화장실·턱 제거 등 접근 편의 "존재 확인"(매장 내 또는 주변)
+ *   C: Google/OSM 으로 휠체어 접근 가능 확인
+ *   D: 그 외(충전기만 주변에 있거나 근거 없음)
+ * weak 매칭으로 신뢰도가 낮춰진(level=unverified) 근거는 등급을 올리지 않는다.
+ */
 export const determineAccessibilityGrade = (
   evidence: AccessibilityEvidence[],
   supportFacilities: SupportFacility[]
 ): AccessibilityGrade => {
+  // A: BF 인증(건물·시설 단위 확인, weak 매칭 제외)
+  if (
+    hasEvidence(
+      evidence,
+      (item) => item.evidenceType === "bf_certified" && item.level === "building_or_facility_level"
+    )
+  ) {
+    return "A";
+  }
+
+  // B: 경사로/승강기/턱 제거/장애인편의시설 등 건물 단위 편의 또는 장애인화장실(매장 내·주변)
+  const hasBuildingFeature = hasEvidence(
+    evidence,
+    (item) =>
+      (item.level === "building_or_facility_level" &&
+        (item.evidenceType === "entrance_ramp" ||
+          item.evidenceType === "threshold_removed" ||
+          item.evidenceType === "elevator" ||
+          item.evidenceType === "disability_facility" ||
+          item.evidenceType === "building_accessible_restroom")) ||
+      // 매장 단위로 장애인화장실이 확인된 경우(Google/OSM restroom, weak 매칭 제외)
+      (item.level === "store_level" &&
+        item.evidenceType === "wheelchair_restroom" &&
+        item.value === true)
+  );
+  const hasNearbyRestroom =
+    supportFacilities.some(
+      (facility) =>
+        facility.type === "accessible_restroom" &&
+        facility.distanceM !== undefined &&
+        facility.distanceM <= RESTROOM_NEARBY_RADIUS_M
+    ) ||
+    hasEvidence(
+      evidence,
+      (item) => item.evidenceType === "accessible_restroom_nearby" && Boolean(item.value)
+    );
+  if (hasBuildingFeature || hasNearbyRestroom) {
+    return "B";
+  }
+
+  // C: Google/OSM 매장 단위 휠체어 접근 가능 확인(weak 매칭 제외)
   if (
     hasEvidence(
       evidence,
@@ -115,26 +164,6 @@ export const determineAccessibilityGrade = (
           (item.evidenceType === "osm_wheelchair" && item.value === "yes"))
     )
   ) {
-    return "A";
-  }
-
-  if (
-    hasEvidence(
-      evidence,
-      (item) =>
-        item.level === "building_or_facility_level" &&
-        (item.evidenceType === "bf_certified" ||
-          item.evidenceType === "disability_facility" ||
-          item.evidenceType === "entrance_ramp" ||
-          item.evidenceType === "threshold_removed" ||
-          item.evidenceType === "elevator" ||
-          item.evidenceType === "building_accessible_restroom")
-    )
-  ) {
-    return "B";
-  }
-
-  if (supportFacilities.length > 0) {
     return "C";
   }
 

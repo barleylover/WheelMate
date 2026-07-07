@@ -56,9 +56,9 @@ const charger = (distanceM: number): SupportFacility => ({
 const FAR = 2000;
 
 describe("scoring: 공공데이터 세부 편의시설 점수표 (v2)", () => {
-  it("Google wheelchairAccessibleEntrance=true 는 A 등급, 매장 단위 점수는 유지된다", () => {
+  it("Google wheelchairAccessibleEntrance=true 는 C 등급, 매장 단위 점수는 유지된다", () => {
     const result = scorePlace(candidate([evidence("Google Places", "wheelchair_entrance", true)]), 250);
-    expect(result.grade).toBe("A");
+    expect(result.grade).toBe("C");
     expect(result.score).toBeGreaterThanOrEqual(70);
   });
 
@@ -68,10 +68,10 @@ describe("scoring: 공공데이터 세부 편의시설 점수표 (v2)", () => {
     expect(result.grade).toBe("D");
   });
 
-  it("BF 인증만 있으면 +30, B 등급", () => {
+  it("BF 인증만 있으면 +30, A 등급", () => {
     const result = scorePlace(candidate([buildingEvidence("bf_certified")]), FAR);
     expect(result.score).toBe(30);
-    expect(result.grade).toBe("B");
+    expect(result.grade).toBe("A");
   });
 
   it("주출입구 높이차이 제거(턱 없음)는 +20", () => {
@@ -103,10 +103,10 @@ describe("scoring: 공공데이터 세부 편의시설 점수표 (v2)", () => {
     expect(result.score).toBe(25); // 건물 화장실 15 + 충전기 10
   });
 
-  it("건물 내 화장실 근거가 없으면 주변 장애인화장실 500m 내 +10 을 가산한다", () => {
+  it("건물 내 화장실 근거가 없으면 주변 장애인화장실 500m 내 +10 을 가산하고 B 등급", () => {
     const result = scorePlace(candidate([]), FAR, [restroom(300)]);
     expect(result.score).toBe(10);
-    expect(result.grade).toBe("C");
+    expect(result.grade).toBe("B");
   });
 
   it("weak 매칭 근거는 점수의 50%만 가산한다 (BF weak → +15)", () => {
@@ -141,7 +141,7 @@ describe("scoring: 공공데이터 세부 편의시설 점수표 (v2)", () => {
     expect(result.grade).toBe("D");
   });
 
-  it("weak/unverified 로 낮춰진 매장 근거는 A 등급으로 올리지 않는다", () => {
+  it("weak/unverified 로 낮춰진 매장 근거는 C 등급으로 올리지 않는다", () => {
     const grade = determineAccessibilityGrade(
       [evidence("Google Places", "wheelchair_entrance", true, "unverified")],
       []

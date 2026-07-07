@@ -69,6 +69,27 @@ export interface AccessibilityEvidence {
   raw?: unknown;
 }
 
+/**
+ * 건물·시설 단위 접근성 레코드(예: 전국장애인편의시설표준데이터).
+ * 후보 장소에 좌표·주소·이름으로 매칭되어 접근성 근거로 부여된다.
+ */
+export interface BuildingAccessibility {
+  name: string;
+  address?: string;
+  roadAddress?: string;
+  lat: number;
+  lng: number;
+  bfCertified: boolean;
+  hasElevator: boolean;
+  hasAccessibleRestroom: boolean;
+  hasThresholdRemoved: boolean;
+  hasEntranceRamp: boolean;
+  hasAccessibleParking: boolean;
+  source: string;
+  raw?: unknown;
+  distanceM?: number;
+}
+
 export interface SupportFacility {
   type: SupportFacilityType;
   name: string;

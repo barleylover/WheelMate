@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { haversineDistanceM } from "../core/distance.js";
-import type { GeoPoint, SupportFacility, SupportFacilityType } from "../core/types.js";
+import type {
+  BuildingAccessibility,
+  GeoPoint,
+  SupportFacility,
+  SupportFacilityType
+} from "../core/types.js";
 import { logger } from "../utils/logger.js";
 
 interface StatementLike {
@@ -92,6 +97,59 @@ export class WheelMateDatabase {
       );
   }
 
+  queryBuildingAccessibilityNear(
+    origin: GeoPoint,
+    radiusM: number,
+    limit = 100
+  ): BuildingAccessibility[] {
+    if (!this.db) {
+      return [];
+    }
+    // 전국 데이터가 커도 바운딩 박스(위/경도 인덱스)로 먼저 좁힌 뒤 haversine 으로 정밀 필터한다.
+    const latDelta = radiusM / 111320;
+    const lngDelta = radiusM / (111320 * Math.max(Math.cos((origin.lat * Math.PI) / 180), 0.01));
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM building_accessibility WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?"
+      )
+      .all(origin.lat - latDelta, origin.lat + latDelta, origin.lng - lngDelta, origin.lng + lngDelta);
+    return rows
+      .map((row) => normalizeBuildingAccessibility(row as Record<string, unknown>))
+      .map((record) => ({ ...record, distanceM: haversineDistanceM(origin, record) }))
+      .filter((record) => record.distanceM !== undefined && record.distanceM <= radiusM)
+      .sort((a, b) => a.distanceM! - b.distanceM!)
+      .slice(0, limit);
+  }
+
+  insertBuildingAccessibility(record: BuildingAccessibility): void {
+    if (!this.db) {
+      return;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO building_accessibility
+          (name, address, road_address, lat, lng, bf_certified, has_elevator,
+           has_accessible_restroom, has_threshold_removed, has_entrance_ramp,
+           has_accessible_parking, source, raw_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.name,
+        record.address ?? null,
+        record.roadAddress ?? null,
+        record.lat,
+        record.lng,
+        record.bfCertified ? 1 : 0,
+        record.hasElevator ? 1 : 0,
+        record.hasAccessibleRestroom ? 1 : 0,
+        record.hasThresholdRemoved ? 1 : 0,
+        record.hasEntranceRamp ? 1 : 0,
+        record.hasAccessibleParking ? 1 : 0,
+        record.source,
+        record.raw ? JSON.stringify(record.raw) : null
+      );
+  }
+
   getCachedJson<T>(key: string): T | undefined {
     if (!this.db) {
       return undefined;
@@ -129,6 +187,22 @@ export class WheelMateDatabase {
       .run(key, provider, JSON.stringify(value), expiresAt);
   }
 }
+
+const normalizeBuildingAccessibility = (row: Record<string, unknown>): BuildingAccessibility => ({
+  name: String(row.name),
+  address: row.address ? String(row.address) : undefined,
+  roadAddress: row.road_address ? String(row.road_address) : undefined,
+  lat: Number(row.lat),
+  lng: Number(row.lng),
+  bfCertified: Number(row.bf_certified) === 1,
+  hasElevator: Number(row.has_elevator) === 1,
+  hasAccessibleRestroom: Number(row.has_accessible_restroom) === 1,
+  hasThresholdRemoved: Number(row.has_threshold_removed) === 1,
+  hasEntranceRamp: Number(row.has_entrance_ramp) === 1,
+  hasAccessibleParking: Number(row.has_accessible_parking) === 1,
+  source: String(row.source),
+  raw: row.raw_json ? JSON.parse(String(row.raw_json)) : undefined
+});
 
 const normalizeSupportFacility = (row: Record<string, unknown>): SupportFacility => ({
   type: row.type as SupportFacilityType,

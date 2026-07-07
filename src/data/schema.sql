@@ -65,6 +65,23 @@ CREATE TABLE IF NOT EXISTS support_facilities (
   raw_json TEXT
 );
 
+CREATE TABLE IF NOT EXISTS building_accessibility (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  address TEXT,
+  road_address TEXT,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  bf_certified INTEGER NOT NULL DEFAULT 0,
+  has_elevator INTEGER NOT NULL DEFAULT 0,
+  has_accessible_restroom INTEGER NOT NULL DEFAULT 0,
+  has_threshold_removed INTEGER NOT NULL DEFAULT 0,
+  has_entrance_ramp INTEGER NOT NULL DEFAULT 0,
+  has_accessible_parking INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL,
+  raw_json TEXT
+);
+
 CREATE TABLE IF NOT EXISTS api_cache (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cache_key TEXT NOT NULL UNIQUE,
@@ -87,5 +104,6 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
 CREATE INDEX IF NOT EXISTS idx_places_source_place_id ON places(source, source_place_id);
 CREATE INDEX IF NOT EXISTS idx_places_lat_lng ON places(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_support_facilities_type ON support_facilities(type);
+CREATE INDEX IF NOT EXISTS idx_building_accessibility_lat_lng ON building_accessibility(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_api_cache_key ON api_cache(cache_key);
 CREATE INDEX IF NOT EXISTS idx_geocode_cache_query ON geocode_cache(query);

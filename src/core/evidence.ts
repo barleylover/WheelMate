@@ -63,11 +63,11 @@ export const recommendationReason = (
   const evidenceNote = confirmedLabels.length > 0 ? `(${confirmedLabels.join(", ")})` : "";
   const base =
     grade === "A"
-      ? `매장 단위로 접근성이 확인된 곳이에요${evidenceNote}.`
+      ? `BF 인증 등 건물 단위 접근성이 확인된 곳이에요${evidenceNote}.`
       : grade === "B"
-        ? `건물·시설 단위로 접근성이 확인된 곳이에요${evidenceNote}.`
+        ? `경사로·승강기·장애인화장실 등 접근 편의가 확인된 곳이에요${evidenceNote}.`
         : grade === "C"
-          ? "주변에 보조 편의시설이 있어 후보에 넣었어요."
+          ? `휠체어로 접근 가능한 것으로 확인된 곳이에요${evidenceNote}.`
           : "접근성 근거는 아직 확인되지 않았지만, 거리가 가까워 참고용으로 넣었어요.";
   const proximity =
     distanceM <= 300 ? "매우 가까워요" : distanceM <= 800 ? "가까운 편이에요" : "조금 떨어져 있어요";

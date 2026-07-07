@@ -26,6 +26,19 @@ const attributionRows = (scored: ScoredPlace): string[] => {
   if (scored.place.source === "OSM" || scored.place.evidence.some((item) => item.source === "OSM")) {
     rows.add("OpenStreetMap contributors");
   }
+  // 공공데이터(장애인편의시설/BF 인증 등) 건물 단위 근거 출처를 그대로 표기한다.
+  for (const item of scored.place.evidence) {
+    if (
+      item.evidenceType === "bf_certified" ||
+      item.evidenceType === "disability_facility" ||
+      item.evidenceType === "entrance_ramp" ||
+      item.evidenceType === "threshold_removed" ||
+      item.evidenceType === "elevator" ||
+      item.evidenceType === "building_accessible_restroom"
+    ) {
+      rows.add(`${item.source} (공공데이터)`);
+    }
+  }
   return [...rows];
 };
 
@@ -94,7 +107,11 @@ export const buildRecommendationResponse = (params: {
       unknown_or_unverified: unknownAccessibilityItems(),
       cautions: cautionsFor(scored),
       links: {
-        kakao_map: kakaoMapLink(scored.place.name, scored.place.kakaoPlaceUrl),
+        kakao_map: kakaoMapLink(
+          scored.place.name,
+          scored.place.kakaoPlaceUrl,
+          scored.place.roadAddress ?? scored.place.address
+        ),
         kakao_route: kakaoRouteLink(params.inputLocation, scored.place.name),
         ...(scored.place.googleMapsUri ? { google_maps: scored.place.googleMapsUri } : {})
       },

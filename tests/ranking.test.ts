@@ -24,9 +24,9 @@ const bf: AccessibilityEvidence = {
 };
 
 describe("rankPlaces: 등급 우선 정렬", () => {
-  it("등급을 점수보다 우선한다 — 점수가 더 높은 C 등급보다 B 등급이 앞선다", () => {
-    const near = place("C-near", 37.5000, 127.0005); // 약 44m, 주변 편의시설만 → C
-    const far = place("B-far", 37.509, 127.0, [bf]); // 약 1km, BF → B
+  it("등급을 점수보다 우선한다 — 점수가 더 높은 B 등급보다 A 등급이 앞선다", () => {
+    const near = place("B-near", 37.5000, 127.0005); // 약 44m, 주변 장애인화장실 → B
+    const far = place("A-far", 37.509, 127.0, [bf]); // 약 1km, BF 인증 → A
     const support: SupportFacility[] = [
       { type: "accessible_restroom", name: "화장실", lat: 37.5, lng: 127.0005, source: "s" },
       { type: "wheelchair_charger", name: "충전기", lat: 37.5, lng: 127.0005, source: "s" }
@@ -34,10 +34,11 @@ describe("rankPlaces: 등급 우선 정렬", () => {
 
     const ranked = rankPlaces([near, far], origin, support, 300);
 
-    expect(ranked[0]?.grade).toBe("B");
-    expect(ranked[0]?.place.id).toBe("B-far");
-    expect(ranked[1]?.place.id).toBe("C-near");
-    // C 후보가 점수는 더 높지만 등급 우선 원칙에 따라 뒤에 온다.
+    expect(ranked[0]?.grade).toBe("A");
+    expect(ranked[0]?.place.id).toBe("A-far");
+    expect(ranked[1]?.grade).toBe("B");
+    expect(ranked[1]?.place.id).toBe("B-near");
+    // B 후보가 점수는 더 높지만 등급 우선 원칙에 따라 뒤에 온다.
     expect(ranked[1]!.score).toBeGreaterThan(ranked[0]!.score);
   });
 
