@@ -23,8 +23,11 @@ describe("contentSearchPreferences", () => {
 
   it("infers location from natural language queries", () => {
     expect(inferLocationFromQuery("사당역 휠체어타고 갈만한 햄버거집 추천좀")).toBe("사당역");
+    expect(inferLocationFromQuery("휠체어 타고 갈 수 있는 사당역 횟집 추천좀")).toBe("사당역");
+    expect(inferLocationFromQuery("휠체어로 갈 수 있는 홍대입구역 카페 추천")).toBe("홍대입구역");
     expect(inferLocationFromQuery("인천 주안에 휠체어 타고 갈만한 분위기 좋은 카페 찾아줘")).toBe("인천 주안");
     expect(inferLocationFromQuery("제주 국제 공항 근처 휠체어 접근 가능한 카페 추천해줘")).toBe("제주 국제 공항");
+    expect(inferLocationFromQuery("전주 한옥 마을 근처 휠체어 접근 가능한 카페 추천해줘")).toBe("전주 한옥 마을");
   });
 
   it("infers category from concrete target terms", () => {
@@ -65,6 +68,38 @@ describe("contentSearchPreferences", () => {
     expect(intent.category).toBe("restaurant");
     expect(intent.contentPreferences).toEqual(["횟집", "회", "생선회"]);
     expect(intent.searchPreferences).toEqual(["횟집", "회", "생선회"]);
+  });
+
+  it("keeps the requested station clean when wheelchair wording precedes it", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        query: "휠체어 타고 갈 수 있는 사당역 횟집 추천",
+        location: "사당역",
+        category: "restaurant",
+        preferences: ["횟집"]
+      },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(intent.location).toBe("사당역");
+    expect(intent.category).toBe("restaurant");
+    expect(intent.contentPreferences).toEqual(["횟집", "회", "생선회"]);
+  });
+
+  it("does not attach trailing action wording to concrete food terms", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        query: "사당역 햄버거집 추천해줘. 휠체어 타고 가기 용이해야 해",
+        location: "사당역",
+        category: "restaurant",
+        preferences: ["햄버거"]
+      },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(intent.location).toBe("사당역");
+    expect(intent.category).toBe("restaurant");
+    expect(intent.contentPreferences).toEqual(["햄버거", "버거"]);
   });
 
   it("extracts specific restaurant types from casual Korean query wording", () => {

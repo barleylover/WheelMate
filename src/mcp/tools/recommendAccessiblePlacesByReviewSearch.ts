@@ -346,7 +346,7 @@ function stripQueryNoise(value: string): string {
     .replace(/[?!.,]/g, " ")
     .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
     .replace(/전동휠체어/g, " ")
-    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|괜찮은|갈만한|갈\s*수|살\s*수\s*있나|가기좋은|가기|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|말고|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게|좌석|아기랑|유모차랑|유모차|혼밥|있는|데)/g, " ")
+    .replace(/(?:해야\s*해|해야해|해야|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|괜찮은|갈만한|갈\s*수|살\s*수\s*있나|가기좋은|가기|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|말고|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게|좌석|아기랑|유모차랑|유모차|혼밥|있는|데)/g, " ")
     .replace(/(?:^|\s)(?:쪽|에서|으로|로|에|의)(?=\s|$)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -357,8 +357,10 @@ function cleanLocationCandidate(value: string): string | undefined {
     .replace(/[?!.,]/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
     .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
+    .replace(/갈\s*수\s*있는/g, " ")
+    .replace(/갈\s*수/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽)/g, " ")
-    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘)/g, " ")
+    .replace(/(?:휠체어|전동휠체어|장애인|접근성|접근|출입|입장|이용|가능한|가능|용이한|용이|편한|편하게|갈만한|가기좋은|조용한|분위기|넓은|맛있는|좋은|추천|찾아줘|추천좀|추천해줘|타고|있는|가야해|해야\s*해|해야해|해야|해줘|장소|곳|가게|데)/g, " ")
     .replace(/\b한\b/g, " ")
     .replace(/(?:근처|주변|인근|부근|쪽|에서|으로|로|에|의)\s*$/g, " ")
     .replace(/\s+/g, " ")
@@ -404,6 +406,10 @@ function inferPrefixLocationFromText(value: string): string | undefined {
     return first;
   }
   if (KNOWN_AREA_LOCATION_TOKENS.has(first) || hasLocationSuffix(first)) {
+    const suffixIndex = tokens.slice(1, 4).findIndex((token) => hasLocationSuffix(token));
+    if (suffixIndex >= 0) {
+      return tokens.slice(0, suffixIndex + 2).join(" ");
+    }
     if (second && hasLocationSuffix(second)) return `${first} ${second}`;
     return first;
   }
@@ -426,7 +432,7 @@ export function inferLocationFromQuery(query?: string): string | undefined {
     /([가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,4}?(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점))(?=\s|$)/
   );
   const suffixLocation = cleanLocationCandidate(suffixMatch?.[1] ?? "");
-  if (suffixLocation) return suffixLocation;
+  if (suffixLocation && locationCandidateLooksPlausible(suffixLocation)) return suffixLocation;
 
   const keywordPositions = CONTENT_OR_CATEGORY_TERMS
     .map((term) => normalized.indexOf(term))
@@ -450,6 +456,76 @@ function resolveInputLocation(inputLocation: string | undefined, query?: string)
   if (inferred) return inferred;
   if (explicit) return explicit;
   throw new Error("location is required or must be inferable from query");
+}
+
+function originIsResolved(origin: Origin): boolean {
+  return origin.provider !== "unresolved" &&
+    Number.isFinite(origin.lat) &&
+    Number.isFinite(origin.lng) &&
+    !(origin.lat === 0 && origin.lng === 0);
+}
+
+function regionalLocationToken(location: string): string | null {
+  const compact = location.replace(/\s+/g, "");
+  const known = new Map([
+    ["제주도", "제주"],
+    ["제주", "제주"],
+    ["제주특별자치도", "제주"],
+    ["서울", "서울"],
+    ["서울시", "서울"],
+    ["부산", "부산"],
+    ["대구", "대구"],
+    ["인천", "인천"],
+    ["광주", "광주"],
+    ["대전", "대전"],
+    ["울산", "울산"],
+    ["울릉도", "울릉"],
+    ["울릉군", "울릉"],
+    ["울릉", "울릉"],
+    ["세종", "세종"],
+    ["경기도", "경기"],
+    ["강원도", "강원"],
+    ["강원특별자치도", "강원"],
+    ["충청북도", "충북"],
+    ["충북", "충북"],
+    ["충청남도", "충남"],
+    ["충남", "충남"],
+    ["전라북도", "전북"],
+    ["전북", "전북"],
+    ["전북특별자치도", "전북"],
+    ["전라남도", "전남"],
+    ["전남", "전남"],
+    ["경상북도", "경북"],
+    ["경북", "경북"],
+    ["경상남도", "경남"],
+    ["경남", "경남"]
+  ]);
+  return known.get(compact) ?? null;
+}
+
+function placeMatchesRegionalLocation(place: PlaceCandidate, location: string): boolean {
+  const token = regionalLocationToken(location);
+  if (!token) return false;
+  return `${place.address ?? ""} ${place.roadAddress ?? ""}`.includes(token);
+}
+
+function attachOriginDistance(place: PlaceCandidate, origin: Origin, location: string): PlaceCandidate {
+  if (!originIsResolved(origin) || placeMatchesRegionalLocation(place, location)) return place;
+  const distance = distanceMeters(origin, { lat: place.lat, lng: place.lng });
+  if (!Number.isFinite(distance)) return place;
+  return {
+    ...place,
+    distance_m: Math.round(distance)
+  };
+}
+
+function placeWithinRequestedArea(place: PlaceCandidate, origin: Origin, location: string, radiusM: number): boolean {
+  if (placeMatchesRegionalLocation(place, location)) return true;
+  if (!originIsResolved(origin)) return false;
+  const distance = distanceMeters(origin, { lat: place.lat, lng: place.lng });
+  if (!Number.isFinite(distance)) return false;
+  const maxDistanceM = Math.max(radiusM * 3, radiusM + 1_500, 2_500);
+  return distance <= maxDistanceM;
 }
 
 function focusedQueryTargetClause(query: string | undefined): string | undefined {
@@ -700,7 +776,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
 ): Promise<Record<string, unknown>> {
-  const {
+  let {
     location,
     category,
     radiusM,
@@ -713,6 +789,18 @@ export async function recommendAccessiblePlacesByReviewSearch(
     defaultRadiusM: config.defaultRadiusM,
     defaultLimit: config.defaultLimit
   });
+  const kakaoLocal = new KakaoLocalClient(config);
+  const publicData = new PublicDataClient(config);
+  const reviewSearch = new ReviewSearchService(config);
+  let origin = await kakaoLocal.resolveLocation(location);
+  const explicitLocation = input.location?.trim();
+  if (!originIsResolved(origin) && explicitLocation && explicitLocation !== location) {
+    const explicitOrigin = await kakaoLocal.resolveLocation(explicitLocation);
+    if (originIsResolved(explicitOrigin)) {
+      location = explicitLocation;
+      origin = explicitOrigin;
+    }
+  }
   const interpretation = {
     location,
     category,
@@ -721,38 +809,39 @@ export async function recommendAccessiblePlacesByReviewSearch(
     unsupported_preferences: unsupportedPreferences,
     content_preferences: contentPreferences
   };
-
-  const kakaoLocal = new KakaoLocalClient(config);
-  const publicData = new PublicDataClient(config);
-  const reviewSearch = new ReviewSearchService(config);
-  const origin = await kakaoLocal.resolveLocation(location);
   const candidateLimit = Math.min(Math.max(limit * 2, 1), config.maxPlaceCandidates);
-  const [discoveredCandidates, contentLocalCandidates, localCandidates] = await Promise.all([
-    discoverPlaceCandidatesByBroadReviewSearch({
-      config,
-      kakaoLocal,
-      origin,
-      location,
-      category,
-      radiusM,
-      preferences: searchPreferences,
-      limit: Math.min(limit, config.maxPlaceCandidates)
-    }),
-    searchContentSpecificLocalCandidates({
-      kakaoLocal,
-      location,
-      origin,
-      radiusM,
-      contentPreferences,
-      limit: Math.min(limit, config.maxPlaceCandidates)
-    }),
-    kakaoLocal.searchNearbyPlaces(location, origin, category, radiusM, candidateLimit)
-  ]);
+  const [discoveredCandidates, contentLocalCandidates, localCandidates] = originIsResolved(origin)
+    ? await Promise.all([
+      discoverPlaceCandidatesByBroadReviewSearch({
+        config,
+        kakaoLocal,
+        origin,
+        location,
+        category,
+        radiusM,
+        preferences: searchPreferences,
+        limit: Math.min(limit, config.maxPlaceCandidates)
+      }),
+      searchContentSpecificLocalCandidates({
+        kakaoLocal,
+        location,
+        origin,
+        radiusM,
+        contentPreferences,
+        limit: Math.min(limit, config.maxPlaceCandidates)
+      }),
+      kakaoLocal.searchNearbyPlaces(location, origin, category, radiusM, candidateLimit)
+    ])
+    : [[], [], []] as PlaceCandidate[][];
   const mergedCandidates = mergePlaceCandidates(
     mergePlaceCandidates(discoveredCandidates, contentLocalCandidates),
     localCandidates
   ).map((place) =>
     fillMissingHubAddress(place, origin, location)
+  ).filter((place) =>
+    placeWithinRequestedArea(place, origin, location, radiusM)
+  ).map((place) =>
+    attachOriginDistance(place, origin, location)
   );
   const preferenceMatchedCandidates = contentPreferences.length > 0
     ? mergedCandidates.filter((place) => placeMatchesContentPreferences(place, contentPreferences))
