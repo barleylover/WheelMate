@@ -87,6 +87,7 @@ describe("buildRecommendResponse", () => {
     const text = JSON.stringify(response);
     expect(response).toHaveProperty("answer_markdown");
     expect(response).toHaveProperty("answer_usage_note");
+    expect(String(response.answer_markdown)).toMatch(/^1순위\. A카페/);
     expect(text).toContain("1순위. A카페");
     expect(text).toContain("추천 이유: 엘리베이터 있음 언급");
     expect(text).toContain("출처: 네이버 블로그 - [출처 보기](https://example.com)");
@@ -95,8 +96,8 @@ describe("buildRecommendResponse", () => {
     expect(text).toContain("지도: [카카오맵]");
     expect(text).toContain("[거리뷰](https://map.kakao.com/link/roadview/12345)");
     expect(text).toContain("주변 지원정보:");
-    expect(text).toContain("- 장애인 화장실: 홍대입구역 장애인화장실, 약 180m, 서울 마포구");
-    expect(text).toContain("- 전동휠체어 충전기: 홍대입구역 급속충전기, 약 450m, 서울 마포구 양화로");
+    expect(text).toContain("- 주변 장애인 화장실 존재. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m");
+    expect(text).toContain("- 주변 전동휠체어 충전기 존재. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m");
     expect(response.recommendations).toEqual([
       expect.objectContaining({
         phone: "02-123-4567",
@@ -110,8 +111,8 @@ describe("buildRecommendResponse", () => {
           link: "https://example.com"
         }),
         support_facilities_display: expect.arrayContaining([
-          "장애인 화장실: 홍대입구역 장애인화장실, 약 180m, 서울 마포구",
-          "전동휠체어 충전기: 홍대입구역 급속충전기, 약 450m, 서울 마포구 양화로"
+          "주변 장애인 화장실 존재. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m",
+          "주변 전동휠체어 충전기 존재. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m"
         ])
       })
     ]);
@@ -166,6 +167,8 @@ describe("buildRecommendResponse", () => {
     const text = JSON.stringify(response);
     expect(text).toContain("추천 이유: 검색 API에서 휠체어 접근성 근거 확인 필요");
     expect(text).toContain("출처: 검색 API 접근성 근거 없음");
+    expect(text).toContain("- 주변 장애인 화장실 없음");
+    expect(text).toContain("- 주변 전동휠체어 충전기 없음");
     expect(text).not.toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
     expect(text).not.toContain("접근성 후기 출처 없음");
   });

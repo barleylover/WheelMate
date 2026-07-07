@@ -365,8 +365,8 @@ function supportFacilityLabel(type: SupportFacility["type"]): string {
 }
 
 function supportFacilityLine(facility: SupportFacility): string {
-  const address = facility.address ? `, ${facility.address}` : "";
-  return `- ${supportFacilityLabel(facility.type)}: ${facility.name}, ${formatDistance(facility.distance_m)}${address}`;
+  const address = facility.address ?? "주소 정보 없음";
+  return `- 주변 ${supportFacilityLabel(facility.type)} 존재. 이름: ${facility.name}, 주소: ${address}, 거리: ${formatDistance(facility.distance_m)}`;
 }
 
 function supportFacilityDisplay(facilities: SupportFacility[]): string[] {
@@ -374,15 +374,12 @@ function supportFacilityDisplay(facilities: SupportFacility[]): string[] {
 }
 
 function supportFacilitySection(facilities: SupportFacility[]): string[] {
-  const selected: SupportFacility[] = [];
   const restroom = facilities.find((facility) => facility.type === "accessible_restroom");
   const charger = facilities.find((facility) => facility.type === "wheelchair_charger");
-  if (restroom) selected.push(restroom);
-  if (charger) selected.push(charger);
-  if (selected.length === 0) {
-    return ["- 주변 장애인 화장실/전동휠체어 충전기 정보 없음"];
-  }
-  return selected.map(supportFacilityLine);
+  return [
+    restroom ? supportFacilityLine(restroom) : "- 주변 장애인 화장실 없음",
+    charger ? supportFacilityLine(charger) : "- 주변 전동휠체어 충전기 없음"
+  ];
 }
 
 function buildMessage(
@@ -396,11 +393,11 @@ function buildMessage(
   const lines: string[] = [];
   const categoryLabel = categoryKeyword(interpretation.category) || "장소";
   const diagnostics = buildSearchDiagnostics([...recommendations, ...notRecommended, ...unverified]);
-  lines.push(
-    `${interpretation.location} 근처 ${categoryLabel} 후보 중에서 블로그·카페·웹문서 검색 결과에 휠체어 접근성 관련 언급이 있는 장소를 보수적으로 정리했습니다.`
-  );
-  lines.push("");
   if (recommendations.length === 0) {
+    lines.push(
+      `${interpretation.location} 근처 ${categoryLabel} 후보 중에서 블로그·카페·웹문서 검색 결과에 휠체어 접근성 관련 언급이 있는 장소를 보수적으로 정리했습니다.`
+    );
+    lines.push("");
     lines.push(zeroRecommendationMessage(fallbackReason, diagnostics));
   } else {
     for (const [index, item] of recommendations.entries()) {

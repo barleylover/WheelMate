@@ -24,7 +24,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 결과의 answer_markdown을 사용자에게 우선 그대로 보여주세요. 재요약하더라도 출처 링크와 거리뷰 링크는 반드시 포함해야 합니다.",
+    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환 텍스트는 이미 최종 사용자 답변입니다. 호출 후 내용을 요약/재작성/순서변경/생략하지 말고 그대로 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
   inputSchema: {
     type: "object",
     properties: {
