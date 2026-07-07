@@ -7,8 +7,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/http.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
     "ingest": "tsx src/data/ingest.ts",
     "test": "vitest run"
   },
@@ -17,6 +19,7 @@
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

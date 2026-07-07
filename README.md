@@ -21,13 +21,18 @@ Required local scripts:
 
 ```bash
 npm run dev
+npm run dev:http
 npm run build
 npm run start
+npm run start:http
 npm run ingest
 npm test
 ```
 
 This workspace was verified with the bundled Codex Node runtime and `pnpm`; the `package.json` scripts are npm-compatible.
+
+`npm run dev` and `npm run start` run the stdio MCP server for local MCP clients.
+`npm run dev:http` and `npm run start:http` run the remote Streamable HTTP MCP server for PlayMCP-style deployment.
 
 ## Environment
 
@@ -56,11 +61,49 @@ Required/optional variables:
 - `MAX_REVIEW_SEARCH_CALLS=60`
 - `SEARCH_RESULTS_PER_QUERY=3`
 - `SEARCH_TIMEOUT_MS=3500`
+- `PORT=8080`
+- `HOST=0.0.0.0`
+- `MCP_ALLOWED_HOSTS=` optional comma-separated host allow-list for deployment
 - `DB_PATH=./data/accessibility.db`
 
 If Naver or Kakao keys are missing, the server returns source-unavailable metadata instead of crashing.
 
 ## MCP Tools
+
+## Remote HTTP MCP
+
+The PlayMCP deployment target should use the HTTP server:
+
+```bash
+PORT=8080 npm run start:http
+```
+
+Endpoints:
+
+- `GET /health`: deployment health check
+- `GET /`: service summary
+- `POST /mcp`: stateless MCP Streamable HTTP endpoint
+
+Local development:
+
+```bash
+pnpm run dev:http
+```
+
+Then register the deployed URL ending in `/mcp` in the PlayMCP developer console, for example:
+
+```text
+https://your-deployed-domain.example/mcp
+```
+
+Do not register the PlayMCP detail page URL as the endpoint. PlayMCP needs the actual remote MCP server endpoint.
+
+Docker build:
+
+```bash
+docker build -t wheelmate-review-search-mcp .
+docker run --env-file .env -p 8080:8080 wheelmate-review-search-mcp
+```
 
 ### `recommend_accessible_places_by_review_search`
 
