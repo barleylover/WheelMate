@@ -103,6 +103,24 @@ describe("contentSearchPreferences", () => {
     expect(dimsum.contentPreferences).toEqual(["딤섬"]);
   });
 
+  it("does not treat accessibility adjectives as location or content", () => {
+    const cafe = resolveRecommendSearchIntent(
+      { query: "홍대입구역 근처 휠체어 접근성 용이한 카페 추천해줘" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+    const restaurant = resolveRecommendSearchIntent(
+      { query: "사당역 근처 휠체어 접근 용이한 식당 추천해줘" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(cafe.location).toBe("홍대입구역");
+    expect(cafe.category).toBe("cafe");
+    expect(cafe.contentPreferences).toEqual([]);
+    expect(restaurant.location).toBe("사당역");
+    expect(restaurant.category).toBe("restaurant");
+    expect(restaurant.contentPreferences).toEqual([]);
+  });
+
   it("falls back to parsed preferences when a query has no concrete target term", () => {
     const intent = resolveRecommendSearchIntent(
       {
