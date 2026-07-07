@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "start:http": "node dist/http.js",
     "ingest": "tsx src/data/ingest.ts",
+    "token:playmcp": "tsx src/scripts/generatePlayMcpToken.ts",
     "test": "vitest run"
   },
   "dependencies": {

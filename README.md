@@ -26,6 +26,7 @@ npm run build
 npm run start
 npm run start:http
 npm run ingest
+npm run token:playmcp
 npm test
 ```
 
@@ -97,6 +98,14 @@ https://your-deployed-domain.example/mcp
 ```
 
 Do not register the PlayMCP detail page URL as the endpoint. PlayMCP needs the actual remote MCP server endpoint.
+
+If the deployment platform cannot inject runtime environment variables, use PlayMCP `Key/token` authentication and generate a token from your local `.env`:
+
+```bash
+pnpm run token:playmcp
+```
+
+Treat the generated value as a secret. In PlayMCP server registration, choose `Key/token authentication` and paste the generated value as the token. The HTTP server reads that bearer token per request and uses it as request-scoped Kakao/Naver API configuration. Do not paste this token into GitHub, README files, issue comments, or chat logs.
 
 Docker build:
 

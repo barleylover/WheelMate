@@ -2,6 +2,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { Request, Response } from "express";
 import { config } from "./config.js";
+import { configFromAuthorization } from "./auth/playMcpConfigToken.js";
 import { createMcpServer } from "./mcp/server.js";
 import { logger } from "./utils/logger.js";
 
@@ -27,7 +28,8 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.post("/mcp", async (req: Request, res: Response) => {
-  const server = createMcpServer(config);
+  const requestConfig = configFromAuthorization(config, req.header("authorization"));
+  const server = createMcpServer(requestConfig);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
