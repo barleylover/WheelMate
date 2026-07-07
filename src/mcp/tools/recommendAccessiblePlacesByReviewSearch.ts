@@ -95,6 +95,7 @@ const ACCESSIBILITY_OR_GENERIC_TERMS = new Set([
   "분위기좋은",
   "넓은",
   "맛있는",
+  "맛집",
   "좋은",
   "근처",
   "주변",
@@ -234,18 +235,35 @@ function expandContentTerm(term: string): string[] {
   return CONTENT_SYNONYMS[term] ?? [term];
 }
 
+function removeSubsumedContentTerms(terms: string[]): string[] {
+  return terms.filter((term) => {
+    if (ALLOWED_SHORT_CONTENT_TERMS.has(term)) return true;
+    return !terms.some((other) => other !== term && other.length > term.length && other.includes(term));
+  });
+}
+
 export function contentSearchPreferences(preferences: string[]): string[] {
-  const terms = preferences
+  const terms = removeSubsumedContentTerms(preferences
     .map(normalizeContentTerm)
     .filter((preference) =>
       (preference.length >= 2 || ALLOWED_SHORT_CONTENT_TERMS.has(preference)) &&
       !ACCESSIBILITY_OR_GENERIC_TERMS.has(preference)
-    );
+    ));
   return [...new Set(terms.flatMap(expandContentTerm))].slice(0, 4);
 }
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, "");
+}
+
+function stripQueryNoise(value: string): string {
+  return value
+    .replace(/[?!.,]/g, " ")
+    .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
+    .replace(/전동휠체어/g, " ")
+    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|갈만한|가기좋은|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|쪽|에서|으로|로|에|의|좀|좋은|맛있는|맛집|넓은|조용한|분위기|장소|곳|가게)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanLocationCandidate(value: string): string | undefined {
@@ -263,9 +281,35 @@ function cleanLocationCandidate(value: string): string | undefined {
   return cleaned;
 }
 
+function locationCandidateLooksPlausible(location: string): boolean {
+  const compact = compactText(location);
+  if (/(?:역|동|구|시|군|도|읍|면|리|공항|터미널|시장|마을|광장|캠퍼스|대학교|해수욕장|공원|궁|몰|백화점)$/.test(compact)) {
+    return true;
+  }
+  if (/(?:서울|부산|대구|인천|광주|대전|울산|세종|제주|경기|강원|충북|충남|전북|전남|경북|경남)/.test(compact)) {
+    return true;
+  }
+  if (/(?:강남|홍대|신촌|사당|성수|잠실|청담|압구정|명동|종로|이태원|여의도|서면|해운대|주안|부평|동성로|수원|전주|대학로|건대|왕십리|연남|합정|망원|상수|을지로|제주시|서귀포)/.test(compact)) {
+    return true;
+  }
+  return false;
+}
+
+function inferLocationBeforeTrailingTarget(query: string): string | undefined {
+  const stripped = stripQueryNoise(query);
+  const tokens = stripped.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return undefined;
+  const candidate = cleanLocationCandidate(tokens.slice(0, -1).join(" "));
+  if (!candidate || !locationCandidateLooksPlausible(candidate)) return undefined;
+  return candidate;
+}
+
 export function inferLocationFromQuery(query?: string): string | undefined {
   if (!query) return undefined;
   const normalized = query.replace(/\s+/g, " ").trim();
+  const beforeTrailingTarget = inferLocationBeforeTrailingTarget(normalized);
+  if (beforeTrailingTarget) return beforeTrailingTarget;
+
   const keywordPositions = CONTENT_OR_CATEGORY_TERMS
     .map((term) => normalized.indexOf(term))
     .filter((index) => index > 0);
@@ -377,12 +421,7 @@ function stripQueryToPotentialTargets(query: string, location?: string): string 
     stripped = stripped.replace(new RegExp(escapeRegExp(location), "g"), " ");
     stripped = stripped.replace(new RegExp(escapeRegExp(location.replace(/\s+/g, "")), "g"), " ");
   }
-  return stripped
-    .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
-    .replace(/전동휠체어/g, " ")
-    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|갈만한|가기좋은|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|쪽|에서|으로|로|에|의|좀|좋은|맛있는|넓은|조용한|분위기)/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return stripQueryNoise(stripped);
 }
 
 function inferFreeformContentTermsFromQuery(query: string, location?: string): string[] {
@@ -494,15 +533,19 @@ async function searchContentSpecificLocalCandidates(input: {
   if (input.contentPreferences.length === 0) return [];
   const terms = input.contentPreferences.slice(0, 3);
   const results = await Promise.all(
-    terms.map((term) =>
-      input.kakaoLocal.keywordSearch(
+    terms.map(async (term) => {
+      const places = await input.kakaoLocal.keywordSearch(
         `${input.location} ${term}`,
         input.origin.lng,
         input.origin.lat,
         input.radiusM,
-        Math.max(2, Math.min(input.limit, 5))
-      )
-    )
+        Math.max(1, Math.min(input.limit, 2))
+      );
+      return places.map((place) => ({
+        ...place,
+        searchAliases: [...new Set([term, ...(place.searchAliases ?? [])])]
+      }));
+    })
   );
   return results.flat();
 }

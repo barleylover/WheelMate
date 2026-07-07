@@ -80,6 +80,29 @@ describe("contentSearchPreferences", () => {
     expect(intent.contentPreferences).toEqual(["횟집", "회", "생선회"]);
   });
 
+  it("keeps unknown concrete target phrases from the raw query", () => {
+    const omakase = resolveRecommendSearchIntent(
+      { query: "서울 강남 오마카세 맛집 휠체어 접근 가능" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+    const burger = resolveRecommendSearchIntent(
+      { query: "인천 주안 수제버거 휠체어 타고 갈만한 곳" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+    const dimsum = resolveRecommendSearchIntent(
+      { query: "강남 딤섬 맛집 휠체어 접근 가능" },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(omakase.location).toBe("서울 강남");
+    expect(omakase.category).toBe("restaurant");
+    expect(omakase.contentPreferences).toEqual(["오마카세"]);
+    expect(burger.location).toBe("인천 주안");
+    expect(burger.contentPreferences).toEqual(["수제버거"]);
+    expect(dimsum.location).toBe("강남");
+    expect(dimsum.contentPreferences).toEqual(["딤섬"]);
+  });
+
   it("falls back to parsed preferences when a query has no concrete target term", () => {
     const intent = resolveRecommendSearchIntent(
       {
