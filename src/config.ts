@@ -62,7 +62,7 @@ export function loadConfig(): AppConfig {
     useDaumBlog: boolEnv("USE_DAUM_BLOG", true),
     useDaumCafe: boolEnv("USE_DAUM_CAFE", true),
     useDaumWeb: boolEnv("USE_DAUM_WEB", true),
-    defaultRadiusM: intEnv("DEFAULT_RADIUS_M", 800, 50),
+    defaultRadiusM: intEnv("DEFAULT_RADIUS_M", 1000, 50),
     defaultLimit: intEnv("DEFAULT_LIMIT", 5, 1),
     maxPlaceCandidates: intEnv("MAX_PLACE_CANDIDATES", 5, 1),
     maxReviewSearchCalls: intEnv("MAX_REVIEW_SEARCH_CALLS", 60, 1),

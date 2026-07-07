@@ -56,7 +56,7 @@ Required/optional variables:
 - `USE_DAUM_BLOG=true|false`
 - `USE_DAUM_CAFE=true|false`
 - `USE_DAUM_WEB=true|false`
-- `DEFAULT_RADIUS_M=800`
+- `DEFAULT_RADIUS_M=1000`
 - `DEFAULT_LIMIT=5`
 - `MAX_PLACE_CANDIDATES=5`
 - `MAX_REVIEW_SEARCH_CALLS=60`

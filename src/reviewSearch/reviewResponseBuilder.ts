@@ -45,20 +45,29 @@ function sourceLabel(source: SearchSource): string {
   return "다음 웹문서";
 }
 
-function serializeEvidence(evidence: ReviewEvidence[]): Array<Record<string, unknown>> {
-  return evidence.map((item) => ({
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1).trim()}…`;
+}
+
+function serializeEvidence(evidence: ReviewEvidence[], limit = 3): Array<Record<string, unknown>> {
+  return evidence.slice(0, limit).map((item) => ({
     source: item.source,
-    title: item.title,
+    title: truncate(item.title, 90),
     link: item.link,
-    snippet: item.snippet,
+    snippet: truncate(item.snippet, 140),
     date: item.date,
     place_match_score: item.place_match_score,
-    signals: item.signals
+    signals: item.signals.slice(0, 4).map((signal) => ({
+      polarity: signal.polarity,
+      type: signal.type,
+      matched_text: signal.matched_text
+    }))
   }));
 }
 
-function serializeSupportFacilities(facilities: SupportFacility[]): Array<Record<string, unknown>> {
-  return facilities.map((facility) => ({
+function serializeSupportFacilities(facilities: SupportFacility[], limit = 3): Array<Record<string, unknown>> {
+  return facilities.slice(0, limit).map((facility) => ({
     type: facility.type,
     name: facility.name,
     address: facility.address,
@@ -94,9 +103,9 @@ function recommendationToJson(item: RankedPlace, rank: number): Record<string, u
     recommendation_status: item.recommendation_status,
     review_signal_score: item.review.review_signal_score,
     ranking_score: Math.round(item.ranking_score),
-    confirmed_review_signals: signalMessage(item.review.results),
-    negative_or_caution_signals: negativeMessage(item.review.results),
-    public_support_evidence: item.public_support_evidence.map((evidence) => ({
+    confirmed_review_signals: signalMessage(item.review.results).slice(0, 6),
+    negative_or_caution_signals: negativeMessage(item.review.results).slice(0, 4),
+    public_support_evidence: item.public_support_evidence.slice(0, 4).map((evidence) => ({
       source: evidence.source,
       level: evidence.level,
       detail: evidence.detail,
@@ -124,7 +133,25 @@ function cautionToJson(item: RankedPlace): Record<string, unknown> {
       item.review.negative_signals.length > 0
         ? "검색 결과에서 강한 부정 또는 주의 신호가 확인되어 피하는 것이 좋은 후보로 분류했습니다."
         : "출처 간 정보가 충돌해 추천에서 제외했습니다.",
-    review_evidence: serializeEvidence(item.review.results)
+    review_evidence: serializeEvidence(item.review.results, 2)
+  };
+}
+
+function unverifiedToJson(item: RankedPlace): Record<string, unknown> {
+  const place = item.place;
+  return {
+    name: place.name,
+    category: place.category,
+    address: place.roadAddress ?? place.address,
+    distance_m: place.distance_m,
+    review_signal_grade: item.review.review_signal_grade,
+    official_support_grade: item.official_support_grade,
+    recommendation_status: item.recommendation_status,
+    confirmed_review_signals: signalMessage(item.review.results).slice(0, 2),
+    negative_or_caution_signals: negativeMessage(item.review.results).slice(0, 2),
+    links: {
+      kakao_map: kakaoMapLink(place.name, place.lat, place.lng)
+    }
   };
 }
 
@@ -207,7 +234,8 @@ export function buildRecommendResponse(input: {
     },
     recommendations: input.recommendations.map((item, index) => recommendationToJson(item, index + 1)),
     not_recommended_places: input.notRecommended.map(cautionToJson),
-    unverified_candidates: input.unverified.map((item) => recommendationToJson(item, 0)),
+    unverified_candidates: input.unverified.slice(0, 3).map(unverifiedToJson),
+    unverified_omitted_count: Math.max(0, input.unverified.length - 3),
     fallback_used: input.fallbackUsed,
     fallback_reason: input.fallbackReason,
     fallback_recommendations: input.fallbackRecommendations.map((item, index) =>
