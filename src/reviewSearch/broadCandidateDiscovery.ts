@@ -232,6 +232,34 @@ function candidateLooksUsable(value: string): boolean {
   return true;
 }
 
+function accessibilityPreferenceTerms(preferences: string[]): string[] {
+  return preferences.filter((preference) =>
+    ["장애인화장실", "충전기근처", "입구중요", "계단회피", "엘리베이터"].includes(preference)
+  );
+}
+
+function contentPreferenceTerms(preferences: string[]): string[] {
+  return preferences.filter((preference) => !accessibilityPreferenceTerms(preferences).includes(preference));
+}
+
+function contentTermMatchesText(term: string, text: string): boolean {
+  if (term === "회") {
+    return /(?:^|[\s>,])회(?:$|[\s>,])|횟집|회센타|회센터|생선회/.test(text);
+  }
+  return text.includes(term);
+}
+
+function placeMatchesContentPreferences(place: PlaceCandidate, preferences: string[]): boolean {
+  const contentPreferences = contentPreferenceTerms(preferences);
+  if (contentPreferences.length === 0) return true;
+  const text = [
+    place.name,
+    String(place.category),
+    ...(place.searchAliases ?? [])
+  ].join(" ");
+  return contentPreferences.some((preference) => contentTermMatchesText(preference, text));
+}
+
 export function buildBroadDiscoveryQueries(
   location: string,
   category: Category,
@@ -246,19 +274,19 @@ export function buildBroadDiscoveryQueries(
         ? ["카페"]
         : [categoryLabel];
   const preferenceTerms = preferences.includes("장애인화장실") ? ["장애인 화장실"] : [];
-  const contentPreferences = preferences.filter((preference) => !["장애인화장실", "충전기근처", "입구중요", "계단회피", "엘리베이터"].includes(preference));
+  const contentPreferences = contentPreferenceTerms(preferences);
   const locations = locationSearchTerms(location);
   return unique([
+    ...contentPreferences.flatMap((term) => locations.flatMap((searchLocation) => [
+      `${searchLocation} ${term} 휠체어`,
+      `${searchLocation} 휠체어 ${term}`,
+      `${searchLocation} ${term} ${categoryLabel}`
+    ])),
     ...locations.map((searchLocation) => `${searchLocation} ${categoryLabel} 휠체어`),
     ...locations.map((searchLocation) => `${searchLocation} 휠체어 ${categoryLabel}`),
     ...locations.flatMap((searchLocation) => categoryAliases.flatMap((alias) => [
       `${searchLocation} ${alias} 휠체어`,
       `${searchLocation} 휠체어 ${alias}`
-    ])),
-    ...contentPreferences.flatMap((term) => locations.flatMap((searchLocation) => [
-      `${searchLocation} ${term} 휠체어`,
-      `${searchLocation} 휠체어 ${term}`,
-      `${searchLocation} ${term} ${categoryLabel}`
     ])),
     ...locations.flatMap((searchLocation) => [
       `${searchLocation} ${categoryLabel} 휠체어 접근성`,
@@ -269,7 +297,7 @@ export function buildBroadDiscoveryQueries(
   ]).slice(0, maxQueries);
 }
 
-function buildFocusedRetryQueries(location: string, category: Category): string[] {
+function buildFocusedRetryQueries(location: string, category: Category, preferences: string[] = []): string[] {
   const categoryLabel = categoryKeyword(category) || "장소";
   const categoryAliases =
     category === "restaurant"
@@ -277,13 +305,21 @@ function buildFocusedRetryQueries(location: string, category: Category): string[
       : category === "cafe"
         ? ["카페"]
         : [categoryLabel];
+  const contentPreferences = contentPreferenceTerms(preferences);
   return unique(
-    categoryAliases.flatMap((alias) => [
-      `${location} ${alias} 휠체어`,
-      `${location} 휠체어 ${alias}`,
-      `${location} ${alias} 휠체어 이용 가능`
-    ])
-  ).slice(0, 4);
+    [
+      ...contentPreferences.flatMap((term) => [
+        `${location} ${term} 휠체어`,
+        `${location} 휠체어 ${term}`,
+        `${location} ${term} 휠체어 이용 가능`
+      ]),
+      ...categoryAliases.flatMap((alias) => [
+        `${location} ${alias} 휠체어`,
+        `${location} 휠체어 ${alias}`,
+        `${location} ${alias} 휠체어 이용 가능`
+      ])
+    ]
+  ).slice(0, contentPreferences.length > 0 ? 6 : 4);
 }
 
 export function extractBroadCandidateTerms(
@@ -544,6 +580,7 @@ async function discoverFromOutcomes(input: BroadDiscoveryInput, outcomes: Source
     const matched = places
       .filter((place) => categoryMatches(place, input.category))
       .filter((place) => !locationToken || placeMatchesBroadLocation(place, locationToken))
+      .filter((place) => placeMatchesContentPreferences(place, input.preferences))
       .filter((place) => !locationToken || evidenceMentionsPlace(place, evidence))
       .filter((place) => evidencePlaceRelevance(place, evidence, term) >= 8)
       .sort((a, b) => evidencePlaceRelevance(b, evidence, term) - evidencePlaceRelevance(a, evidence, term))
@@ -580,7 +617,7 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: BroadDis
 
   const focusedSources = sources.filter((source) => ["naver_blog", "daum_blog", "naver_web"].includes(source)).slice(0, 3);
   if (focusedSources.length === 0) return primary;
-  const focusedRequests = buildFocusedRetryQueries(input.location, input.category).flatMap((query) =>
+  const focusedRequests = buildFocusedRetryQueries(input.location, input.category, input.preferences).flatMap((query) =>
     focusedSources.map((source) => ({ source, query }))
   );
   const focusedOutcomes = await mapWithConcurrency(

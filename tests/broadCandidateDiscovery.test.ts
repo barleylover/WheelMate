@@ -17,9 +17,20 @@ describe("broad candidate discovery", () => {
   it("adds restaurant aliases and cuisine preference queries", () => {
     const queries = buildBroadDiscoveryQueries("제주도", "restaurant", ["마라탕"]);
 
+    expect(queries[0]).toBe("제주도 마라탕 휠체어");
     expect(queries).toContain("제주도 휠체어 식당");
     expect(queries).toContain("제주도 맛집 휠체어");
     expect(queries).toContain("제주도 마라탕 휠체어");
+  });
+
+  it("prioritizes concrete fish restaurant queries over generic restaurant queries", () => {
+    const queries = buildBroadDiscoveryQueries("제주", "restaurant", ["횟집", "회", "생선회"]);
+
+    expect(queries.slice(0, 3)).toEqual([
+      "제주 횟집 휠체어",
+      "제주 휠체어 횟집",
+      "제주 횟집 음식점"
+    ]);
   });
 
   it("adds local aliases for campus-style locations", () => {

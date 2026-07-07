@@ -14,6 +14,7 @@ describe("contentSearchPreferences", () => {
   it("normalizes restaurant suffixes and expands common synonyms", () => {
     expect(contentSearchPreferences(["햄버거집"])).toEqual(["햄버거", "버거"]);
     expect(contentSearchPreferences(["초밥집"])).toEqual(["초밥", "스시"]);
+    expect(contentSearchPreferences(["횟집"])).toEqual(["횟집", "회", "생선회"]);
   });
 
   it("keeps non-food place types while removing generic terms", () => {
@@ -48,6 +49,35 @@ describe("contentSearchPreferences", () => {
     expect(intent.category).toBe("restaurant");
     expect(intent.contentPreferences).toEqual(["햄버거", "버거"]);
     expect(intent.searchPreferences).toEqual(["햄버거", "버거"]);
+  });
+
+  it("treats specific restaurant types in the raw query as hard content filters", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        query: "제주 횟집 휠체어 접근 가능",
+        location: "제주",
+        category: "restaurant"
+      },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(intent.location).toBe("제주");
+    expect(intent.category).toBe("restaurant");
+    expect(intent.contentPreferences).toEqual(["횟집", "회", "생선회"]);
+    expect(intent.searchPreferences).toEqual(["횟집", "회", "생선회"]);
+  });
+
+  it("extracts specific restaurant types from casual Korean query wording", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        query: "제주 횟집 추천좀 휠체어 타고 가야해"
+      },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(intent.location).toBe("제주");
+    expect(intent.category).toBe("restaurant");
+    expect(intent.contentPreferences).toEqual(["횟집", "회", "생선회"]);
   });
 
   it("falls back to parsed preferences when a query has no concrete target term", () => {

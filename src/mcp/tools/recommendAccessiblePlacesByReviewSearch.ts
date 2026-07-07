@@ -98,8 +98,18 @@ const ACCESSIBILITY_OR_GENERIC_TERMS = new Set([
   "좋은",
   "근처",
   "주변",
+  "인근",
+  "부근",
   "추천",
+  "추천좀",
+  "추천해줘",
+  "찾아줘",
+  "가야해",
+  "갈만한",
+  "가기좋은",
+  "타고",
   "장소",
+  "곳",
   "가게",
   "음식점",
   "식당",
@@ -109,6 +119,11 @@ const ACCESSIBILITY_OR_GENERIC_TERMS = new Set([
 const CONTENT_SYNONYMS: Record<string, string[]> = {
   햄버거: ["햄버거", "버거"],
   버거: ["버거", "햄버거"],
+  횟집: ["횟집", "회", "생선회"],
+  회: ["회", "횟집", "생선회"],
+  생선회: ["생선회", "횟집", "회"],
+  해산물: ["해산물", "해물"],
+  해물: ["해물", "해산물"],
   초밥: ["초밥", "스시"],
   스시: ["스시", "초밥"],
   베이커리: ["베이커리", "빵집"],
@@ -116,6 +131,11 @@ const CONTENT_SYNONYMS: Record<string, string[]> = {
   돈까스: ["돈까스", "돈가스"],
   돈가스: ["돈가스", "돈까스"],
   쌀국수: ["쌀국수", "베트남"],
+  고깃집: ["고깃집", "고기", "구이"],
+  고기집: ["고기집", "고기", "구이"],
+  중국집: ["중국집", "중식"],
+  치킨집: ["치킨집", "치킨"],
+  타코집: ["타코집", "타코"],
   비건: ["비건", "채식"],
   채식: ["채식", "비건"]
 };
@@ -123,6 +143,10 @@ const CONTENT_SYNONYMS: Record<string, string[]> = {
 const CONTENT_OR_CATEGORY_TERMS = [
   "장애인 화장실",
   "전동휠체어 충전기",
+  "생선회",
+  "해산물",
+  "횟집",
+  "해물",
   "마라탕",
   "라멘",
   "라면",
@@ -153,6 +177,13 @@ const CONTENT_OR_CATEGORY_TERMS = [
   "떡볶이",
   "비건",
   "채식",
+  "고깃집",
+  "고기집",
+  "중국집",
+  "치킨집",
+  "타코집",
+  "타코",
+  "브리또",
   "약국",
   "병원",
   "서점",
@@ -177,10 +208,24 @@ const CONTENT_OR_CATEGORY_TERMS = [
   "충전기"
 ];
 
+const EXACT_CONTENT_TERMS = new Set([
+  "횟집",
+  "고깃집",
+  "고기집",
+  "중국집",
+  "치킨집",
+  "타코집",
+  "빵집"
+]);
+
+const ALLOWED_SHORT_CONTENT_TERMS = new Set(["회"]);
+
 function normalizeContentTerm(preference: string): string {
-  return preference
+  const compact = preference
     .trim()
-    .replace(/\s+/g, "")
+    .replace(/\s+/g, "");
+  if (EXACT_CONTENT_TERMS.has(compact)) return compact;
+  return compact
     .replace(/(?:으로|로)?(?:갈만한|가기좋은|접근가능한|이용가능한)$/g, "")
     .replace(/(?:맛집|전문점|집|가게)$/g, "");
 }
@@ -192,7 +237,10 @@ function expandContentTerm(term: string): string[] {
 export function contentSearchPreferences(preferences: string[]): string[] {
   const terms = preferences
     .map(normalizeContentTerm)
-    .filter((preference) => preference.length >= 2 && !ACCESSIBILITY_OR_GENERIC_TERMS.has(preference));
+    .filter((preference) =>
+      (preference.length >= 2 || ALLOWED_SHORT_CONTENT_TERMS.has(preference)) &&
+      !ACCESSIBILITY_OR_GENERIC_TERMS.has(preference)
+    );
   return [...new Set(terms.flatMap(expandContentTerm))].slice(0, 4);
 }
 
@@ -249,73 +297,125 @@ export function inferCategoryFromQuery(query: string | undefined, fallback: Cate
   if (/영화관|공연장|도서관|전시관/.test(query)) return "culture";
   if (/카페|커피|베이커리|빵집|디저트|브런치/.test(query)) return "cafe";
   if (
-    /음식점|식당|맛집|마라탕|라멘|라면|초밥|스시|포케|파스타|피자|햄버거|버거|샌드위치|샐러드|한식|중식|일식|양식|분식|삼겹살|갈비|국밥|칼국수|냉면|김밥|떡볶이|비건|채식/.test(query)
+    /음식점|식당|맛집|횟집|생선회|해산물|해물|(?:^|\s)회(?:\s|$)|마라탕|라멘|라면|초밥|스시|포케|파스타|피자|햄버거|버거|샌드위치|샐러드|한식|중식|일식|양식|분식|삼겹살|갈비|국밥|칼국수|냉면|김밥|떡볶이|고깃집|고기집|중국집|치킨집|타코|브리또|비건|채식/.test(query)
   ) {
     return "restaurant";
   }
   return fallback;
 }
 
-function inferContentPreferencesFromQuery(query?: string): string[] {
+const CONCRETE_CONTENT_TERMS = [
+  "생선회",
+  "해산물",
+  "횟집",
+  "해물",
+  "마라탕",
+  "라멘",
+  "라면",
+  "초밥",
+  "스시",
+  "포케",
+  "파스타",
+  "피자",
+  "햄버거",
+  "버거",
+  "샌드위치",
+  "샐러드",
+  "베이커리",
+  "빵집",
+  "디저트",
+  "브런치",
+  "한식",
+  "중식",
+  "일식",
+  "양식",
+  "분식",
+  "삼겹살",
+  "갈비",
+  "국밥",
+  "칼국수",
+  "냉면",
+  "김밥",
+  "떡볶이",
+  "고깃집",
+  "고기집",
+  "고기",
+  "치킨집",
+  "치킨",
+  "중국집",
+  "타코집",
+  "타코",
+  "브리또",
+  "비건",
+  "채식",
+  "약국",
+  "병원",
+  "서점",
+  "영화관",
+  "공연장",
+  "도서관",
+  "미술관",
+  "박물관",
+  "전시관",
+  "쇼핑몰",
+  "백화점",
+  "마트",
+  "편의점",
+  "은행",
+  "미용실",
+  "헬스장",
+  "공원"
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripQueryToPotentialTargets(query: string, location?: string): string {
+  let stripped = query.replace(/[?!.,]/g, " ");
+  if (location) {
+    stripped = stripped.replace(new RegExp(escapeRegExp(location), "g"), " ");
+    stripped = stripped.replace(new RegExp(escapeRegExp(location.replace(/\s+/g, "")), "g"), " ");
+  }
+  return stripped
+    .replace(/휠체어(?:를|로)?\s*(?:타고|이용해서|이용하여)?/g, " ")
+    .replace(/전동휠체어/g, " ")
+    .replace(/(?:장애인|접근성|접근|출입|입장|이용|가능한|가능|갈만한|가기좋은|추천해줘|추천좀|추천|찾아줘|가야해|해줘|타고|근처|주변|인근|부근|쪽|에서|으로|로|에|의|좀|좋은|맛있는|넓은|조용한|분위기)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferFreeformContentTermsFromQuery(query: string, location?: string): string[] {
+  const stripped = stripQueryToPotentialTargets(query, location);
+  if (!stripped) return [];
+  const tokenTerms = stripped.split(/\s+/).filter(Boolean);
+  const phrase = tokenTerms.join(" ");
+  return uniqueContentTerms([phrase, ...tokenTerms].filter((term) => !ACCESSIBILITY_OR_GENERIC_TERMS.has(term)));
+}
+
+function uniqueContentTerms(terms: string[]): string[] {
+  return [...new Set(terms.filter(Boolean))];
+}
+
+function inferContentPreferencesFromQuery(query?: string, location?: string): string[] {
   if (!query) return [];
-  const terms = [
-    "마라탕",
-    "라멘",
-    "라면",
-    "초밥",
-    "스시",
-    "포케",
-    "파스타",
-    "피자",
-    "햄버거",
-    "버거",
-    "샌드위치",
-    "샐러드",
-    "베이커리",
-    "빵집",
-    "디저트",
-    "브런치",
-    "한식",
-    "중식",
-    "일식",
-    "양식",
-    "분식",
-    "삼겹살",
-    "갈비",
-    "국밥",
-    "칼국수",
-    "냉면",
-    "김밥",
-    "떡볶이",
-    "비건",
-    "채식",
-    "약국",
-    "병원",
-    "서점",
-    "영화관",
-    "공연장",
-    "도서관",
-    "미술관",
-    "박물관",
-    "전시관",
-    "쇼핑몰",
-    "백화점",
-    "마트",
-    "편의점",
-    "은행",
-    "미용실",
-    "헬스장",
-    "공원"
-  ];
   const explicitTypeTerms = Array.from(query.matchAll(/([가-힣A-Za-z0-9]{2,12})(?:집|전문점|가게)/g)).map(
     (match) => match[1] ?? ""
   );
-  const inferred = [...terms.filter((term) => query.includes(term)), ...explicitTypeTerms];
+  const shortRawFishTerms = /(?:^|\s)회(?:\s|$)/.test(query) ? ["회"] : [];
+  const inferred = [
+    ...CONCRETE_CONTENT_TERMS.filter((term) => query.includes(term)),
+    ...shortRawFishTerms,
+    ...explicitTypeTerms,
+    ...inferFreeformContentTermsFromQuery(query, location)
+  ];
   if (inferred.includes("스시") && !inferred.includes("초밥")) inferred.push("초밥");
   if (inferred.includes("초밥") && !inferred.includes("스시")) inferred.push("스시");
   if (inferred.includes("베이커리") && !inferred.includes("빵집")) inferred.push("빵집");
   if (inferred.includes("빵집") && !inferred.includes("베이커리")) inferred.push("베이커리");
   if (inferred.includes("햄버거") && !inferred.includes("버거")) inferred.push("버거");
+  if (inferred.includes("횟집") && !inferred.includes("회")) inferred.push("회");
+  if (inferred.includes("회") && !inferred.includes("횟집")) inferred.push("횟집");
   return inferred;
 }
 
@@ -337,7 +437,7 @@ export function resolveRecommendSearchIntent(
   const radiusM = input.radius_m ?? defaults.defaultRadiusM;
   const limit = input.limit ?? defaults.defaultLimit;
   const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
-  const queryContentPreferences = inferContentPreferencesFromQuery(input.query);
+  const queryContentPreferences = inferContentPreferencesFromQuery(input.query, location);
   const contentPreferenceSource =
     input.query && queryContentPreferences.length > 0 ? queryContentPreferences : unsupportedPreferences;
   const contentPreferences = contentSearchPreferences(contentPreferenceSource);
@@ -353,15 +453,21 @@ export function resolveRecommendSearchIntent(
   };
 }
 
-function placeMatchesContentPreferences(place: { name: string; category: string | Category; searchAliases?: string[]; discoveryEvidence?: Array<{ title: string; snippet: string }> }, preferences: string[]): boolean {
+function contentTermMatchesText(term: string, text: string): boolean {
+  if (term === "회") {
+    return /(?:^|[\s>,])회(?:$|[\s>,])|횟집|회센타|회센터|생선회/.test(text);
+  }
+  return text.includes(term);
+}
+
+function placeMatchesContentPreferences(place: { name: string; category: string | Category; searchAliases?: string[] }, preferences: string[]): boolean {
   if (preferences.length === 0) return true;
   const text = [
     place.name,
     String(place.category),
-    ...(place.searchAliases ?? []),
-    ...(place.discoveryEvidence ?? []).flatMap((evidence) => [evidence.title, evidence.snippet])
+    ...(place.searchAliases ?? [])
   ].join(" ");
-  return preferences.some((preference) => text.includes(preference));
+  return preferences.some((preference) => contentTermMatchesText(preference, text));
 }
 
 function fillMissingHubAddress(place: PlaceCandidate, origin: Origin, location: string): PlaceCandidate {
