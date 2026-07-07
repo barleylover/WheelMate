@@ -19,7 +19,10 @@ export function supportEvidenceFromFacilities(facilities: SupportFacility[]): Pu
 export function officialSupportGrade(evidence: PublicSupportEvidence[]): OfficialSupportGrade {
   if (
     evidence.some(
-      (item) => item.evidence_type === "bf_certified" || item.evidence_type === "disability_facility"
+      (item) =>
+        item.evidence_type === "bf_certified" ||
+        item.evidence_type === "disability_facility" ||
+        item.evidence_type === "barrier_free_travel"
     )
   ) {
     return "O1";
@@ -37,8 +40,16 @@ export function officialSupportScore(evidence: PublicSupportEvidence[]): number 
     const key = `${item.source_family}:${item.evidence_type}`;
     if (families.has(key)) continue;
     families.add(key);
-    if (item.evidence_type === "bf_certified" || item.evidence_type === "disability_facility") {
+    if (
+      item.evidence_type === "bf_certified" ||
+      item.evidence_type === "disability_facility" ||
+      item.evidence_type === "barrier_free_travel"
+    ) {
       score += 20;
+      continue;
+    }
+    if (item.evidence_type === "culture_barrier_free" || item.evidence_type === "museum_accessibility") {
+      score += 12;
       continue;
     }
     if (item.evidence_type === "accessible_restroom_nearby") {

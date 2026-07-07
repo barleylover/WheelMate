@@ -66,12 +66,13 @@ export function partitionRankedPlaces(items: RankedPlace[], includeUnverified = 
   const notRecommended = items.filter((item) => item.review.review_signal_grade === "W");
   const unverified = items.filter(
     (item) =>
-      item.review.review_signal_grade === "R4" &&
+      (item.review.review_signal_grade === "R4" || item.review.review_signal_grade === "R3") &&
       item.official_support_grade === "none"
   );
   const recommendations = sortRankedPlaces(
     items.filter((item) => {
       if (item.review.review_signal_grade === "W") return false;
+      if (!includeUnverified && item.review.review_signal_grade === "R3" && item.official_support_grade === "none") return false;
       if (!includeUnverified && item.review.review_signal_grade === "R4" && item.official_support_grade === "none") return false;
       return true;
     })

@@ -30,6 +30,13 @@ describe("scoreReviewEvidence", () => {
     expect(result.grade).toBe("R2");
   });
 
+  it("does not grade floor-only mentions as a positive recommendation", () => {
+    const result = scoreReviewEvidence([
+      evidence({ polarity: "ambiguous", strength: "weak", type: "basement_or_floor", matched_text: "1층" })
+    ]);
+    expect(result.grade).toBe("R3");
+  });
+
   it("grades ambiguous-only as R3 and no signals as R4", () => {
     expect(
       scoreReviewEvidence([

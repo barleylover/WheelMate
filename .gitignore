@@ -8,4 +8,6 @@ coverage/
 *.log
 data/*.db
 data/*.db-*
+data/import/*
+!data/import/README.md
 logs/

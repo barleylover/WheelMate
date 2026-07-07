@@ -31,6 +31,24 @@ describe("extractSignalsFromText", () => {
     );
   });
 
+  it("keeps floor-only mentions ambiguous", () => {
+    const signals = extractSignalsFromText("매장은 1층에 있어요");
+    expect(signals).toContainEqual(
+      expect.objectContaining({ polarity: "ambiguous", strength: "weak", type: "basement_or_floor" })
+    );
+  });
+
+  it("extracts broader accessibility wording", () => {
+    const signals = extractSignalsFromText("전동휠체어 진입 가능, 턱이 없고 슬로프가 설치되어 있어요.");
+    expect(signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ polarity: "positive", strength: "strong", type: "wheelchair_direct" }),
+        expect.objectContaining({ polarity: "positive", strength: "strong", type: "entrance_step" }),
+        expect.objectContaining({ polarity: "positive", strength: "strong", type: "ramp" })
+      ])
+    );
+  });
+
   it("keeps station elevator context ambiguous", () => {
     const signals = extractSignalsFromText("지하철역 엘리베이터가 가까워요");
     expect(signals).toContainEqual(

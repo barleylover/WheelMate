@@ -31,7 +31,7 @@ function compact(parts: Array<string | undefined>): string {
   return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
-export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 3): string[] {
+export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 5): string[] {
   const knownCategories = new Set(["cafe", "restaurant", "culture", "museum", "restroom", "charger", "any"]);
   const category =
     context.category && knownCategories.has(String(context.category))
@@ -39,11 +39,14 @@ export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 3):
       : context.category;
   const baseParts = [context.placeName, context.neighborhood];
   const candidates = [
-    compact([...baseParts, "휠체어"]),
-    compact([...baseParts, "유모차 엘리베이터 계단"]),
-    compact([...baseParts, "문턱 경사로 장애인 화장실"]),
+    compact([...baseParts, "휠체어 접근성"]),
+    compact([...baseParts, "휠체어 출입 가능"]),
+    compact([...baseParts, "문턱 없음 경사로"]),
+    compact([...baseParts, "계단 엘리베이터"]),
+    compact([...baseParts, "장애인 화장실"]),
+    compact([...baseParts, "유모차 휠체어"]),
     compact([context.placeName, context.district, "무장애 배리어프리"]),
-    compact([context.placeName, context.addressToken, category, "휠체어 접근성"])
+    compact([context.placeName, context.addressToken, category, "휠체어"])
   ].filter(Boolean);
 
   const priorities: string[] = [];

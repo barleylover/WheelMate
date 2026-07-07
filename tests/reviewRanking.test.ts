@@ -40,14 +40,15 @@ describe("review ranking", () => {
     expect(sorted.map((item) => item.place.name)).toEqual(["r1", "r2", "o1", "r3"]);
   });
 
-  it("partitions W and default R4 outside recommendations", () => {
+  it("partitions W, weak R3, and default R4 outside recommendations", () => {
     const partitions = partitionRankedPlaces([
       ranked("bad", "W", "none", 10),
+      ranked("weak", "R3", "none", 10),
       ranked("unknown", "R4", "none", 10),
       ranked("good", "R1", "none", 10)
     ]);
     expect(partitions.recommendations.map((item) => item.place.name)).toEqual(["good"]);
     expect(partitions.notRecommended.map((item) => item.place.name)).toEqual(["bad"]);
-    expect(partitions.unverified.map((item) => item.place.name)).toEqual(["unknown"]);
+    expect(partitions.unverified.map((item) => item.place.name)).toEqual(["weak", "unknown"]);
   });
 });

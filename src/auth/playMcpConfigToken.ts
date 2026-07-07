@@ -6,6 +6,9 @@ interface PlayMcpConfigTokenPayload {
   KAKAO_REST_API_KEY?: string;
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
+  PUBLIC_DATA_SERVICE_KEY?: string;
+  KTO_SERVICE_KEY?: string;
+  CULTURE_BIGDATA_API_KEY?: string;
 }
 
 function extractToken(value: string | undefined): string | undefined {
@@ -27,7 +30,12 @@ function decodePayload(token: string): PlayMcpConfigTokenPayload | null {
       KAKAO_REST_API_KEY: typeof parsed.KAKAO_REST_API_KEY === "string" ? parsed.KAKAO_REST_API_KEY : undefined,
       NAVER_CLIENT_ID: typeof parsed.NAVER_CLIENT_ID === "string" ? parsed.NAVER_CLIENT_ID : undefined,
       NAVER_CLIENT_SECRET:
-        typeof parsed.NAVER_CLIENT_SECRET === "string" ? parsed.NAVER_CLIENT_SECRET : undefined
+        typeof parsed.NAVER_CLIENT_SECRET === "string" ? parsed.NAVER_CLIENT_SECRET : undefined,
+      PUBLIC_DATA_SERVICE_KEY:
+        typeof parsed.PUBLIC_DATA_SERVICE_KEY === "string" ? parsed.PUBLIC_DATA_SERVICE_KEY : undefined,
+      KTO_SERVICE_KEY: typeof parsed.KTO_SERVICE_KEY === "string" ? parsed.KTO_SERVICE_KEY : undefined,
+      CULTURE_BIGDATA_API_KEY:
+        typeof parsed.CULTURE_BIGDATA_API_KEY === "string" ? parsed.CULTURE_BIGDATA_API_KEY : undefined
     };
   } catch {
     return null;
@@ -38,9 +46,17 @@ export function createPlayMcpConfigToken(env: NodeJS.ProcessEnv = process.env): 
   const payload: PlayMcpConfigTokenPayload = {
     KAKAO_REST_API_KEY: env.KAKAO_REST_API_KEY?.trim(),
     NAVER_CLIENT_ID: env.NAVER_CLIENT_ID?.trim(),
-    NAVER_CLIENT_SECRET: env.NAVER_CLIENT_SECRET?.trim()
+    NAVER_CLIENT_SECRET: env.NAVER_CLIENT_SECRET?.trim(),
+    PUBLIC_DATA_SERVICE_KEY: env.PUBLIC_DATA_SERVICE_KEY?.trim(),
+    KTO_SERVICE_KEY: env.KTO_SERVICE_KEY?.trim(),
+    CULTURE_BIGDATA_API_KEY: env.CULTURE_BIGDATA_API_KEY?.trim()
   };
-  const missing = Object.entries(payload)
+  const requiredPayload = {
+    KAKAO_REST_API_KEY: payload.KAKAO_REST_API_KEY,
+    NAVER_CLIENT_ID: payload.NAVER_CLIENT_ID,
+    NAVER_CLIENT_SECRET: payload.NAVER_CLIENT_SECRET
+  };
+  const missing = Object.entries(requiredPayload)
     .filter(([, value]) => !value)
     .map(([name]) => name);
   if (missing.length > 0) {
@@ -57,6 +73,9 @@ export function configFromAuthorization(baseConfig: AppConfig, authorizationHead
     ...baseConfig,
     kakaoRestApiKey: payload.KAKAO_REST_API_KEY || baseConfig.kakaoRestApiKey,
     naverClientId: payload.NAVER_CLIENT_ID || baseConfig.naverClientId,
-    naverClientSecret: payload.NAVER_CLIENT_SECRET || baseConfig.naverClientSecret
+    naverClientSecret: payload.NAVER_CLIENT_SECRET || baseConfig.naverClientSecret,
+    publicDataServiceKey: payload.PUBLIC_DATA_SERVICE_KEY || baseConfig.publicDataServiceKey,
+    ktoServiceKey: payload.KTO_SERVICE_KEY || baseConfig.ktoServiceKey,
+    cultureBigdataApiKey: payload.CULTURE_BIGDATA_API_KEY || baseConfig.cultureBigdataApiKey
   };
 }

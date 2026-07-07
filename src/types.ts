@@ -125,6 +125,9 @@ export interface PublicSupportEvidence {
   evidence_type:
     | "bf_certified"
     | "disability_facility"
+    | "barrier_free_travel"
+    | "culture_barrier_free"
+    | "museum_accessibility"
     | "accessible_restroom_nearby"
     | "wheelchair_charger_nearby";
   detail: string;

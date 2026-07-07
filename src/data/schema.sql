@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS places (
 CREATE TABLE IF NOT EXISTS public_accessibility_evidence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   place_id INTEGER,
+  name TEXT,
+  address TEXT,
+  lat REAL,
+  lng REAL,
   source TEXT NOT NULL,
   source_family TEXT NOT NULL,
   evidence_level TEXT NOT NULL,

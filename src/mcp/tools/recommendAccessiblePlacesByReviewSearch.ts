@@ -17,7 +17,7 @@ import {
   sortRankedPlaces
 } from "../../reviewSearch/reviewRanking.js";
 import { splitPreferences } from "../../reviewSearch/queryBuilder.js";
-import type { Category, PlaceCandidate, PublicSupportEvidence, RankedPlace, ReviewSignal } from "../../types.js";
+import type { Category, RankedPlace, ReviewSignal } from "../../types.js";
 
 export interface RecommendAccessiblePlacesInput {
   query?: string;
@@ -55,12 +55,6 @@ function preferenceBonus(
   return bonus;
 }
 
-function matchedPublicEvidenceForPlace(_place: PlaceCandidate): PublicSupportEvidence[] {
-  // Public certification/facility matching is intentionally conservative in the MVP.
-  // Loader-backed matching can add O1 evidence here without touching review search behavior.
-  return [];
-}
-
 export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
@@ -86,7 +80,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
 
   const ranked: RankedPlace[] = [];
   for (const place of candidates) {
-    const review = await reviewSearch.analyzePlace(place, input.location, preferences, 3);
+    const review = await reviewSearch.analyzePlace(place, input.location, preferences, 5);
     const supportFacilities = publicData.findNearbySupportFacilities(
       { lat: place.lat, lng: place.lng },
       "all",
@@ -94,7 +88,7 @@ export async function recommendAccessiblePlacesByReviewSearch(
       4
     );
     const publicEvidence = [
-      ...matchedPublicEvidenceForPlace(place),
+      ...publicData.findMatchingAccessibilityEvidence(place),
       ...supportEvidenceFromFacilities(supportFacilities)
     ];
     const supportGrade = officialSupportGrade(publicEvidence);

@@ -20,6 +20,10 @@ function clampScore(value: number): number {
   return Math.max(0, Math.min(99, Math.round(value)));
 }
 
+function isFloorOnlySignal(signal: ReviewSignal): boolean {
+  return signal.type === "basement_or_floor";
+}
+
 export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResult {
   const signals = evidence.flatMap((item) => item.signals);
   const positive = signals.filter((signal) => signal.polarity === "positive");
@@ -27,14 +31,23 @@ export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResu
   const ambiguous = signals.filter((signal) => signal.polarity === "ambiguous");
   const strongPositive = positive.filter((signal) => signal.strength === "strong");
   const strongNegative = negative.filter((signal) => signal.strength === "strong");
-  const weakPositive = positive.filter((signal) => signal.strength !== "strong");
-  const positiveSources = new Set(evidence.filter((item) => item.signals.some((signal) => signal.polarity === "positive")).map((item) => item.source));
+  const mediumPositive = positive.filter((signal) => signal.strength === "medium");
+  const weakPositive = positive.filter((signal) => signal.strength === "weak");
+  const nonFloorPositive = positive.filter((signal) => !isFloorOnlySignal(signal));
+  const strongNonFloorPositive = strongPositive.filter((signal) => !isFloorOnlySignal(signal));
+  const positiveSources = new Set(
+    evidence
+      .filter((item) => item.signals.some((signal) => signal.polarity === "positive" && !isFloorOnlySignal(signal)))
+      .map((item) => item.source)
+  );
   const negativeResults = evidence.filter((item) => item.signals.some((signal) => signal.polarity === "negative")).length;
   const conflict = positive.length > 0 && negative.length > 0;
 
   let rawScore = 0;
-  rawScore += strongPositive.length * 35;
-  rawScore += weakPositive.length * 15;
+  rawScore += strongNonFloorPositive.length * 35;
+  rawScore += mediumPositive.length * 24;
+  rawScore += weakPositive.filter((signal) => !isFloorOnlySignal(signal)).length * 12;
+  rawScore += positive.filter(isFloorOnlySignal).length * 3;
   if (positiveSources.size >= 2) rawScore += 10;
   for (const item of evidence) {
     const age = yearsOld(item.date);
@@ -49,11 +62,11 @@ export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResu
   if (conflict) rawScore -= 30;
 
   let grade: ReviewSignalGrade = "R4";
-  if (strongNegative.length >= 1 || negativeResults >= 2 || (strongPositive.length > 0 && strongNegative.length > 0)) {
+  if (strongNegative.length >= 1 || negativeResults >= 2 || (strongNonFloorPositive.length > 0 && strongNegative.length > 0)) {
     grade = "W";
-  } else if (strongPositive.length >= 1 || positiveSources.size >= 2) {
+  } else if (strongNonFloorPositive.length >= 1 || positiveSources.size >= 2) {
     grade = "R1";
-  } else if (weakPositive.length >= 1) {
+  } else if (nonFloorPositive.length >= 1) {
     grade = "R2";
   } else if (ambiguous.length >= 1) {
     grade = "R3";

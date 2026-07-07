@@ -17,19 +17,23 @@ function kakaoRouteLink(name: string, lat: number, lng: number): string {
 }
 
 function signalMessage(evidence: ReviewEvidence[]): string[] {
-  return evidence.flatMap((item) =>
+  return uniqueMessages(evidence.flatMap((item) =>
     item.signals
       .filter((signal) => signal.polarity === "positive")
       .map((signal) => `${sourceLabel(item.source)} 검색 결과에서 '${signal.matched_text}' 표현 언급`)
-  );
+  ));
 }
 
 function negativeMessage(evidence: ReviewEvidence[]): string[] {
-  return evidence.flatMap((item) =>
+  return uniqueMessages(evidence.flatMap((item) =>
     item.signals
       .filter((signal) => signal.polarity !== "positive")
       .map((signal) => `${sourceLabel(item.source)} 검색 결과에서 '${signal.matched_text}' 언급`)
-  );
+  ));
+}
+
+function uniqueMessages(messages: string[]): string[] {
+  return [...new Set(messages)];
 }
 
 function sourceLabel(source: SearchSource): string {
@@ -142,9 +146,13 @@ function buildMessage(
   } else {
     for (const [index, item] of recommendations.entries()) {
       const signals = signalMessage(item.review.results).slice(0, 3).join(", ") || "명확한 긍정 표현 없음";
+      const cautions = negativeMessage(item.review.results).slice(0, 2).join(", ");
       lines.push(
         `- ${index + 1}순위. ${item.place.name}: ${item.review.review_signal_grade}, 검색 결과에서 ${signals}`
       );
+      if (cautions) {
+        lines.push(`  주의 신호: ${cautions}`);
+      }
     }
   }
   lines.push("");

@@ -216,12 +216,33 @@ Run schema setup:
 npm run ingest
 ```
 
-Current public-data loaders are conservative stubs so review search can ship as a stable MVP first. Loader-backed BF/restroom/charger ingestion can be added without changing review extraction.
+Public-data ingestion reads optional CSV files from `data/import/` and stores official/support evidence in SQLite. Missing files are skipped, so search-only operation still works.
+
+Supported import filenames:
+
+- `bf_kead.csv`: 한국장애인고용공단 BF 인증 시설 정보
+- `bf_koddi.csv`: 한국장애인개발원 장애물없는생활환경인증 정보
+- `disability_facilities_standard.csv`: 전국장애인편의시설표준데이터
+- `social_security_disability_facilities.csv`: 한국사회보장정보원 장애인편의시설 현황
+- `public_restrooms.csv`: 전국공중화장실표준데이터
+- `wheelchair_chargers.csv`: 전국전동휠체어급속충전기표준데이터
+- `culture_barrier_free.csv`: 장애인/베리어프리 문화생활 정보
+- `gyeonggi_shared_disability_facilities.csv`: 경기도 경기공유 장애인시설
+- `kto_barrier_free_travel.csv`: 한국관광공사 무장애 여행 정보
+- `museum_standard.csv`: 전국박물관미술관정보표준데이터
+
+After adding one or more CSV files:
+
+```bash
+npm run ingest
+```
+
+The recommendation tool then matches public evidence by coordinates, name, and address, and shows it separately from review-search evidence.
 
 ## Review Signal Grades
 
 - `R1`: strong positive review signal, or positive signals from multiple results/sources, with no strong negative.
-- `R2`: weak positive signal such as stroller proxy, 1st floor, wide entrance, or elevator mention.
+- `R2`: weak positive signal such as stroller proxy, wide entrance, or elevator mention.
 - `R3`: accessibility-related mention exists but is unclear.
 - `R4`: no useful accessibility signal.
 - `W`: strong negative, repeated negative, or strongly conflicting evidence. These go to `not_recommended_places`.

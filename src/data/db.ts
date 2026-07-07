@@ -15,4 +15,21 @@ export function applySchema(db: DatabaseSync): void {
   const schemaPath = path.join(dirname, "schema.sql");
   const schema = fs.readFileSync(schemaPath, "utf8");
   db.exec(schema);
+  migratePublicAccessibilityEvidence(db);
+}
+
+function migratePublicAccessibilityEvidence(db: DatabaseSync): void {
+  const columns = db
+    .prepare("PRAGMA table_info(public_accessibility_evidence)")
+    .all()
+    .map((row) => String((row as { name: unknown }).name));
+  const missingColumns = [
+    ["name", "TEXT"],
+    ["address", "TEXT"],
+    ["lat", "REAL"],
+    ["lng", "REAL"]
+  ].filter(([name]) => !columns.includes(name));
+  for (const [name, type] of missingColumns) {
+    db.exec(`ALTER TABLE public_accessibility_evidence ADD COLUMN ${name} ${type}`);
+  }
 }

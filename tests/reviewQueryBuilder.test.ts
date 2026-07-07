@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildReviewQueries, splitPreferences } from "../src/reviewSearch/queryBuilder.js";
 
 describe("buildReviewQueries", () => {
-  it("creates three default queries with place and neighborhood", () => {
+  it("creates five default queries with place and neighborhood", () => {
     const queries = buildReviewQueries({
       placeName: "A카페",
       neighborhood: "홍대입구",
@@ -10,9 +10,11 @@ describe("buildReviewQueries", () => {
       category: "카페"
     });
 
-    expect(queries).toHaveLength(3);
+    expect(queries).toHaveLength(5);
     expect(queries[0]).toContain("A카페");
     expect(queries[0]).toContain("홍대입구");
+    expect(queries.join(" ")).toContain("문턱");
+    expect(queries.join(" ")).toContain("장애인 화장실");
   });
 
   it("prioritizes entrance and restroom preferences", () => {

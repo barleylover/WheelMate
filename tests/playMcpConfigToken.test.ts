@@ -26,7 +26,10 @@ describe("PlayMCP config token", () => {
     const token = createPlayMcpConfigToken({
       KAKAO_REST_API_KEY: "kakao-test",
       NAVER_CLIENT_ID: "naver-id",
-      NAVER_CLIENT_SECRET: "naver-secret"
+      NAVER_CLIENT_SECRET: "naver-secret",
+      PUBLIC_DATA_SERVICE_KEY: "public-data-key",
+      KTO_SERVICE_KEY: "kto-key",
+      CULTURE_BIGDATA_API_KEY: "culture-key"
     } as NodeJS.ProcessEnv);
 
     const config = configFromAuthorization(baseConfig, `Bearer ${token}`);
@@ -34,6 +37,9 @@ describe("PlayMCP config token", () => {
     expect(config.kakaoRestApiKey).toBe("kakao-test");
     expect(config.naverClientId).toBe("naver-id");
     expect(config.naverClientSecret).toBe("naver-secret");
+    expect(config.publicDataServiceKey).toBe("public-data-key");
+    expect(config.ktoServiceKey).toBe("kto-key");
+    expect(config.cultureBigdataApiKey).toBe("culture-key");
   });
 
   it("falls back to base config for missing or invalid token", () => {
