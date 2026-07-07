@@ -38,19 +38,19 @@ describe("contentSearchPreferences", () => {
     expect(inferCategoryFromQuery("신촌역 영화관 추천", "any")).toBe("culture");
   });
 
-  it("uses the raw query as the source of truth over noisy tool parameters", () => {
+  it("uses explicit structured location and category over noisy query parsing", () => {
     const intent = resolveRecommendSearchIntent(
       {
         query: "사당역 휠체어타고 갈만한 햄버거집 추천좀",
         location: "강남역",
         category: "cafe",
-        preferences: ["휠체어", "분위기"]
+        preferences: ["햄버거"]
       },
       { defaultRadiusM: 800, defaultLimit: 5 }
     );
 
-    expect(intent.location).toBe("사당역");
-    expect(intent.category).toBe("restaurant");
+    expect(intent.location).toBe("강남역");
+    expect(intent.category).toBe("cafe");
     expect(intent.contentPreferences).toEqual(["햄버거", "버거"]);
     expect(intent.searchPreferences).toEqual(["햄버거", "버거"]);
   });
@@ -116,6 +116,43 @@ describe("contentSearchPreferences", () => {
     expect(intent.location).toBe("잠실역");
     expect(intent.category).toBe("cafe");
     expect(intent.contentPreferences).toEqual([]);
+  });
+
+  it("keeps generic category queries unfiltered when structured fields are present", () => {
+    const cases = [
+      {
+        query: "휠체어 타고 가기 편한 잠실역 근처 카페",
+        location: "잠실역",
+        category: "cafe" as const
+      },
+      {
+        query: "홍대입구역 근처에서 휠체어 접근성 좋은 카페 추천",
+        location: "홍대입구역",
+        category: "cafe" as const
+      },
+      {
+        query: "사당역 근처 휠체어 타고 갈만한 음식점 추천",
+        location: "사당역",
+        category: "restaurant" as const
+      },
+      {
+        query: "전주 한옥 마을 주변 휠체어 가능한 카페",
+        location: "전주 한옥 마을",
+        category: "cafe" as const
+      }
+    ];
+
+    for (const item of cases) {
+      const intent = resolveRecommendSearchIntent(
+        item,
+        { defaultRadiusM: 800, defaultLimit: 5 }
+      );
+
+      expect(intent.location).toBe(item.location);
+      expect(intent.category).toBe(item.category);
+      expect(intent.contentPreferences).toEqual([]);
+      expect(intent.searchPreferences).toEqual([]);
+    }
   });
 
   it("extracts specific restaurant types from casual Korean query wording", () => {

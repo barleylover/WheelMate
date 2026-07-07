@@ -452,9 +452,9 @@ export function inferLocationFromQuery(query?: string): string | undefined {
 
 function resolveInputLocation(inputLocation: string | undefined, query?: string): string {
   const explicit = inputLocation?.trim();
+  if (explicit) return explicit;
   const inferred = inferLocationFromQuery(query);
   if (inferred) return inferred;
-  if (explicit) return explicit;
   throw new Error("location is required or must be inferable from query");
 }
 
@@ -685,13 +685,13 @@ export function resolveRecommendSearchIntent(
   searchPreferences: string[];
 } {
   const location = resolveInputLocation(input.location, input.query);
-  const category = inferCategoryFromQuery(input.query, normalizeCategory(input.category));
+  const category = input.category ? normalizeCategory(input.category) : inferCategoryFromQuery(input.query, "any");
   const radiusM = input.radius_m ?? defaults.defaultRadiusM;
   const limit = input.limit ?? defaults.defaultLimit;
   const { supported: preferences, unsupported: unsupportedPreferences } = splitPreferences(input.preferences ?? []);
   const queryContentPreferences = inferContentPreferencesFromQuery(input.query, location);
   const contentPreferenceSource =
-    input.query && queryContentPreferences.length > 0 ? queryContentPreferences : unsupportedPreferences;
+    unsupportedPreferences.length > 0 ? unsupportedPreferences : queryContentPreferences;
   const contentPreferences = contentSearchPreferences(contentPreferenceSource);
   return {
     location,
@@ -793,15 +793,17 @@ export async function recommendAccessiblePlacesByReviewSearch(
   const publicData = new PublicDataClient(config);
   const reviewSearch = new ReviewSearchService(config);
   let origin = await kakaoLocal.resolveLocation(location);
-  const explicitLocation = input.location?.trim();
-  if (!originIsResolved(origin) && explicitLocation && explicitLocation !== location) {
-    const explicitOrigin = await kakaoLocal.resolveLocation(explicitLocation);
-    if (originIsResolved(explicitOrigin)) {
-      location = explicitLocation;
-      origin = explicitOrigin;
+  const fallbackLocation = input.location?.trim() && !originIsResolved(origin)
+    ? inferLocationFromQuery(input.query)
+    : undefined;
+  if (!originIsResolved(origin) && fallbackLocation && fallbackLocation !== location) {
+    const fallbackOrigin = await kakaoLocal.resolveLocation(fallbackLocation);
+    if (originIsResolved(fallbackOrigin)) {
+      location = fallbackLocation;
+      origin = fallbackOrigin;
       const explicitQueryContentPreferences = inferContentPreferencesFromQuery(input.query, location);
       const explicitContentPreferenceSource =
-        input.query && explicitQueryContentPreferences.length > 0 ? explicitQueryContentPreferences : unsupportedPreferences;
+        unsupportedPreferences.length > 0 ? unsupportedPreferences : explicitQueryContentPreferences;
       contentPreferences = contentSearchPreferences(explicitContentPreferenceSource);
       searchPreferences = [...preferences, ...contentPreferences];
     }
