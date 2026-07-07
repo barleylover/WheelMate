@@ -1,0 +1,29 @@
+{
+  "name": "wheelmate-review-search-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WheelMate Review Search MCP server for accessibility review signals.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "ingest": "tsx src/data/ingest.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.16"
+  }
+}
