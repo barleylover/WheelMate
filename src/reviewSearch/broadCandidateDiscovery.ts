@@ -43,6 +43,9 @@ const GENERIC_WORDS = [
   "근처",
   "주변",
   "서울",
+  "서초",
+  "방배동",
+  "이수역",
   "맛집",
   "카페",
   "음식점",
@@ -54,13 +57,25 @@ const GENERIC_WORDS = [
   "케이크",
   "브런치",
   "소개팅",
+  "소개",
   "실내데이트",
+  "이색데이트",
   "놀거리",
   "가득한",
   "인생빵집",
   "찐",
   "명인",
-  "점"
+  "점",
+  "귀멸의칼날",
+  "무화과",
+  "카라반",
+  "상세",
+  "관광정보",
+  "분위기",
+  "좋은",
+  "있는",
+  "유명한",
+  "만나다"
 ];
 
 const LOOKUP_GENERIC_WORDS = new Set([
@@ -80,7 +95,21 @@ const LOOKUP_GENERIC_WORDS = new Set([
   "명인",
   "점",
   "소개",
-  "정보"
+  "정보",
+  "서초",
+  "방배동",
+  "이수역",
+  "이색데이트",
+  "귀멸의칼날",
+  "무화과",
+  "카라반",
+  "상세",
+  "관광정보",
+  "분위기",
+  "좋은",
+  "있는",
+  "유명한",
+  "만나다"
 ]);
 
 function unique<T>(items: T[]): T[] {
@@ -94,6 +123,7 @@ function escapeRegExp(value: string): string {
 function cleanSearchText(value: string): string {
   return value
     .replace(/https?:\/\/\S+/g, " ")
+    .replace(/\s[-–—]\s/g, " ")
     .replace(/[|｜:;!?]+/g, " ")
     .replace(/[<>{}\[\]《》“”"']/g, " ")
     .replace(/\s+/g, " ")
@@ -122,6 +152,7 @@ function candidateLooksUsable(value: string): boolean {
   const compact = value.replace(/\s+/g, "");
   if (compact.length < 2 || compact.length > 24) return false;
   if (/^\d+$/.test(compact)) return false;
+  if (/[.]{2,}|^\(|\)$|^\d{4}[.년]/.test(value)) return false;
   if (DISCOVERY_ACCESSIBILITY_PATTERN.test(compact)) return false;
   return true;
 }
@@ -255,8 +286,8 @@ export async function discoverPlaceCandidatesByBroadReviewSearch(input: {
       .flatMap((outcome) => outcome.results)
       .filter(hasDiscoverySignal)
       .flatMap((result) => extractBroadCandidateTerms(result, input.location, input.category))
-  ).slice(0, 12);
-  const lookupTerms = unique(terms.flatMap((term) => buildKakaoLookupTerms(term))).slice(0, 24);
+  ).slice(0, 30);
+  const lookupTerms = unique(terms.flatMap((term) => buildKakaoLookupTerms(term))).slice(0, 80);
 
   const discovered: PlaceCandidate[] = [];
   for (const term of lookupTerms) {
