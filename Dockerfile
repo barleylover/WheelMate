@@ -16,11 +16,6 @@ COPY data/ /app/data/
 COPY README_MVP.md /app/README_MVP.md
 COPY USAGE_EXAMPLES.md /app/USAGE_EXAMPLES.md
 
-RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && chown -R appuser:appuser /app
-
-USER appuser
-
 EXPOSE 8080
 
 CMD ["python", "/app/mcp_http_server.py"]
