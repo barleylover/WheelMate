@@ -3,7 +3,16 @@ import type { RankedPlace } from "../src/types.js";
 import { buildRecommendResponse } from "../src/reviewSearch/reviewResponseBuilder.js";
 
 const ranked: RankedPlace = {
-  place: { name: "A카페", category: "cafe", address: "서울", lat: 37.5, lng: 127, distance_m: 100 },
+  place: {
+    name: "A카페",
+    category: "cafe",
+    address: "서울",
+    phone: "02-123-4567",
+    lat: 37.5,
+    lng: 127,
+    distance_m: 100,
+    sourcePlaceId: "12345"
+  },
   review: {
     place_name: "A카페",
     address: "서울",
@@ -35,7 +44,26 @@ const ranked: RankedPlace = {
   ranking_score: 580,
   official_support_score: 0,
   public_support_evidence: [],
-  support_facilities_nearby: []
+  support_facilities_nearby: [
+    {
+      type: "accessible_restroom",
+      name: "홍대입구역 장애인화장실",
+      address: "서울 마포구",
+      lat: 37.55,
+      lng: 126.92,
+      distance_m: 180,
+      source: "전국공중화장실표준데이터"
+    },
+    {
+      type: "wheelchair_charger",
+      name: "홍대입구역 급속충전기",
+      address: "서울 마포구 양화로",
+      lat: 37.551,
+      lng: 126.921,
+      distance_m: 450,
+      source: "전국전동휠체어급속충전기표준데이터"
+    }
+  ]
 };
 
 describe("buildRecommendResponse", () => {
@@ -57,10 +85,67 @@ describe("buildRecommendResponse", () => {
       fallbackRecommendations: []
     });
     const text = JSON.stringify(response);
-    expect(text).toContain("후기 기반 접근성 신호");
-    expect(text).toContain("공공데이터 기반 보조 근거");
+    expect(text).toContain("1순위. A카페");
+    expect(text).toContain("추천 이유: 엘리베이터 있음 언급이 있는 후기 신호가 확인됨");
+    expect(text).toContain("출처: 네이버 블로그 - [출처 보기](https://example.com)");
+    expect(text).toContain("거리: 약 100m");
+    expect(text).toContain("전화: 02-123-4567");
+    expect(text).toContain("지도: [카카오맵]");
+    expect(text).toContain("[거리뷰](https://map.kakao.com/link/roadview/12345)");
+    expect(text).toContain("주변 지원정보:");
+    expect(text).toContain("- 장애인 화장실: 홍대입구역 장애인화장실, 약 180m, 서울 마포구");
+    expect(text).toContain("- 전동휠체어 충전기: 홍대입구역 급속충전기, 약 450m, 서울 마포구 양화로");
     expect(text).toContain("Naver Search API 결과 기반 참고 신호");
     expect(text).not.toContain("휠체어 최적" + " 경로");
     expect(text).not.toContain("공식 접근성 정보" + "로 확인");
+    expect(text).not.toContain("전국공중화장실표준데이터");
+  });
+
+  it("uses public evidence source when review evidence is unavailable", () => {
+    const publicOnly: RankedPlace = {
+      ...ranked,
+      place: { name: "B카페", category: "cafe", address: "서울", lat: 37.5, lng: 127, distance_m: 250 },
+      review: {
+        ...ranked.review,
+        place_name: "B카페",
+        review_signal_grade: "R4",
+        review_signal_score: 0,
+        positive_signals: [],
+        results: []
+      },
+      official_support_grade: "O1",
+      recommendation_status: "official_support_only",
+      public_support_evidence: [
+        {
+          source: "한국장애인개발원 BF 인증 정보",
+          source_family: "bf_certification",
+          level: "building_or_facility_level",
+          evidence_type: "bf_certified",
+          detail: "장애물 없는 생활환경 인증 시설로 확인됨",
+          confidence: 0.9
+        }
+      ],
+      support_facilities_nearby: []
+    };
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "홍대입구역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "홍대입구역", lat: 37.55, lng: 126.92 },
+      recommendations: [publicOnly],
+      notRecommended: [],
+      unverified: [],
+      fallbackUsed: false,
+      fallbackReason: null,
+      fallbackRecommendations: []
+    });
+    const text = JSON.stringify(response);
+    expect(text).toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
+    expect(text).toContain("출처: 한국장애인개발원 BF 인증 정보 - 장애물 없는 생활환경 인증 시설로 확인됨");
+    expect(text).not.toContain("접근성 후기 출처 없음");
   });
 });

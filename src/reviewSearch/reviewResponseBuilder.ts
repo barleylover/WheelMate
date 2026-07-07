@@ -16,6 +16,13 @@ function kakaoRouteLink(name: string, lat: number, lng: number): string {
   return `https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`;
 }
 
+function kakaoRoadviewLink(place: { sourcePlaceId?: string; lat: number; lng: number }): string {
+  if (place.sourcePlaceId) {
+    return `https://map.kakao.com/link/roadview/${place.sourcePlaceId}`;
+  }
+  return `https://map.kakao.com/link/roadview/${place.lat},${place.lng}`;
+}
+
 function signalMessage(evidence: ReviewEvidence[]): string[] {
   return uniqueMessages(evidence.flatMap((item) =>
     item.signals
@@ -75,9 +82,7 @@ function serializeSupportFacilities(facilities: SupportFacility[], limit = 3): A
     type: facility.type,
     name: facility.name,
     address: facility.address,
-    distance_m: facility.distance_m,
-    opening_hours: facility.opening_hours,
-    source: facility.source
+    distance_m: facility.distance_m
   }));
 }
 
@@ -124,7 +129,8 @@ function recommendationToJson(item: RankedPlace, rank: number): Record<string, u
     cautions: DEFAULT_CAUTIONS,
     links: {
       kakao_map: kakaoMapLink(place.name, place.lat, place.lng),
-      kakao_route: kakaoRouteLink(place.name, place.lat, place.lng)
+      kakao_route: kakaoRouteLink(place.name, place.lat, place.lng),
+      kakao_roadview: kakaoRoadviewLink(place)
     },
     attribution: item.review.attribution
   };
@@ -154,9 +160,75 @@ function unverifiedToJson(item: RankedPlace): Record<string, unknown> {
     confirmed_review_signals: signalMessage(item.review.results).slice(0, 2),
     negative_or_caution_signals: negativeMessage(item.review.results).slice(0, 2),
     links: {
-      kakao_map: kakaoMapLink(place.name, place.lat, place.lng)
+      kakao_map: kakaoMapLink(place.name, place.lat, place.lng),
+      kakao_roadview: kakaoRoadviewLink(place)
     }
   };
+}
+
+function formatDistance(distanceM: number | undefined): string {
+  if (distanceM === undefined || !Number.isFinite(distanceM)) return "거리 정보 없음";
+  const rounded = Math.max(0, Math.round(distanceM));
+  if (rounded >= 1000) {
+    const km = Math.round((rounded / 1000) * 10) / 10;
+    return `약 ${km}km`;
+  }
+  return `약 ${rounded}m`;
+}
+
+function formatPhone(phone: string | undefined): string {
+  return phone?.trim() || "전화번호 정보 없음";
+}
+
+function bestPositiveEvidence(evidence: ReviewEvidence[]): ReviewEvidence | undefined {
+  return evidence.find((item) => item.signals.some((signal) => signal.polarity === "positive"));
+}
+
+function recommendationReason(item: RankedPlace): string {
+  const positive = bestPositiveEvidence(item.review.results);
+  const matchedTexts = uniqueMessages(
+    positive?.signals
+      .filter((signal) => signal.polarity === "positive")
+      .map((signal) => signal.matched_text) ?? []
+  );
+  if (matchedTexts.length > 0) {
+    return `${matchedTexts.slice(0, 2).join(", ")} 언급이 있는 후기 신호가 확인됨`;
+  }
+  if (item.public_support_evidence.length > 0) {
+    return "공공데이터 기반 접근성 보조 근거가 확인됨";
+  }
+  return "접근성 관련 검색 신호가 일부 확인됨";
+}
+
+function recommendationSourceLine(item: RankedPlace, evidence: ReviewEvidence | undefined): string {
+  if (!evidence && item.public_support_evidence.length > 0) {
+    const publicEvidence = item.public_support_evidence[0];
+    return `출처: ${publicEvidence.source} - ${truncate(publicEvidence.detail, 60)}`;
+  }
+  if (!evidence) return "출처: 접근성 근거 출처 없음";
+  return `출처: ${sourceLabel(evidence.source)} - [출처 보기](${evidence.link})`;
+}
+
+function supportFacilityLabel(type: SupportFacility["type"]): string {
+  if (type === "accessible_restroom") return "장애인 화장실";
+  return "전동휠체어 충전기";
+}
+
+function supportFacilityLine(facility: SupportFacility): string {
+  const address = facility.address ? `, ${facility.address}` : "";
+  return `- ${supportFacilityLabel(facility.type)}: ${facility.name}, ${formatDistance(facility.distance_m)}${address}`;
+}
+
+function supportFacilitySection(facilities: SupportFacility[]): string[] {
+  const selected: SupportFacility[] = [];
+  const restroom = facilities.find((facility) => facility.type === "accessible_restroom");
+  const charger = facilities.find((facility) => facility.type === "wheelchair_charger");
+  if (restroom) selected.push(restroom);
+  if (charger) selected.push(charger);
+  if (selected.length === 0) {
+    return ["- 주변 장애인 화장실/전동휠체어 충전기 정보 없음"];
+  }
+  return selected.map(supportFacilityLine);
 }
 
 function buildMessage(
@@ -171,31 +243,30 @@ function buildMessage(
     `${interpretation.location} 근처 ${categoryLabel} 후보 중에서 블로그·카페·웹문서 검색 결과에 휠체어 접근성 관련 언급이 있는 장소를 보수적으로 정리했습니다.`
   );
   lines.push("");
-  lines.push("후기 기반 접근성 신호");
   if (recommendations.length === 0) {
-    lines.push("- 추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.");
+    lines.push("추천에 넣을 만큼 명확한 후기 기반 긍정 신호가 있는 후보는 아직 확인되지 않았습니다.");
   } else {
     for (const [index, item] of recommendations.entries()) {
-      const signals = signalMessage(item.review.results).slice(0, 3).join(", ") || "명확한 긍정 표현 없음";
+      const place = item.place;
+      const evidence = bestPositiveEvidence(item.review.results);
       const cautions = negativeMessage(item.review.results).slice(0, 2).join(", ");
+      lines.push(`${index + 1}순위. ${place.name}`);
+      lines.push(`추천 이유: ${recommendationReason(item)}`);
+      lines.push(recommendationSourceLine(item, evidence));
+      lines.push(`주소: ${displayAddress(place) ?? "주소 정보 없음"}`);
+      lines.push(`거리: ${formatDistance(place.distance_m)}`);
+      lines.push(`전화: ${formatPhone(place.phone)}`);
       lines.push(
-        `- ${index + 1}순위. ${item.place.name}: ${item.review.review_signal_grade}, 검색 결과에서 ${signals}`
+        `지도: [카카오맵](${kakaoMapLink(place.name, place.lat, place.lng)}) [거리뷰](${kakaoRoadviewLink(place)})`
       );
       if (cautions) {
-        lines.push(`  주의 신호: ${cautions}`);
+        lines.push(`주의 신호: ${cautions}`);
       }
+      lines.push("");
+      lines.push("주변 지원정보:");
+      lines.push(...supportFacilitySection(item.support_facilities_nearby));
+      lines.push("");
     }
-  }
-  lines.push("");
-  lines.push("공공데이터 기반 보조 근거");
-  if (recommendations.some((item) => item.public_support_evidence.length > 0)) {
-    for (const item of recommendations) {
-      for (const evidence of item.public_support_evidence.slice(0, 2)) {
-        lines.push(`- ${item.place.name}: ${evidence.detail}`);
-      }
-    }
-  } else {
-    lines.push("- 현재 로컬 공공데이터 DB에서 매칭된 보조 근거는 없습니다.");
   }
   lines.push("");
   lines.push("확인되지 않은 정보");
