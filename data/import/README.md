@@ -21,5 +21,6 @@ Recognized filenames:
 
 Do not commit downloaded large data files unless the team explicitly decides to version them.
 
-`public_restrooms.csv` must include latitude/longitude columns to support nearby-distance lookup.
-Public restroom exports that only contain addresses are skipped until they are geocoded.
+`public_restrooms.csv` can be imported with address-only rows. Rows with latitude/longitude are used
+for distance lookup; address-only rows are matched by administrative address area and shown with
+unknown distance.

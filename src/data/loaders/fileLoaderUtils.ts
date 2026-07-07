@@ -3,6 +3,7 @@ import path from "node:path";
 import { TextDecoder } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "../../config.js";
+import { parseAddressArea } from "../../core/addressArea.js";
 import { applySchema, openDatabase } from "../db.js";
 
 type EvidenceSourceFamily =
@@ -178,27 +179,55 @@ export function loadSupportFacilityCsv(options: SupportFacilityCsvOptions): numb
   if (rows.length === 0) return 0;
   return withDatabase((db) => {
     db.prepare("DELETE FROM support_facilities WHERE type = ? AND source = ?").run(options.type, options.source);
-    const stmt = db.prepare(
+    db.prepare("DELETE FROM support_facility_address_records WHERE type = ? AND source = ?").run(
+      options.type,
+      options.source
+    );
+    const coordinateStmt = db.prepare(
       `INSERT INTO support_facilities
         (type, name, address, lat, lng, opening_hours, phone, source, raw_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
+    const addressStmt = db.prepare(
+      `INSERT INTO support_facility_address_records
+        (type, name, address, region1, region2, region3, opening_hours, phone, source, raw_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
     let count = 0;
     for (const row of rows) {
       const name = pick(row, options.nameFields);
+      const address = pick(row, options.addressFields);
       const lat = numberValue(pick(row, options.latFields));
       const lng = numberValue(pick(row, options.lngFields));
-      if (!name || lat === null || lng === null) continue;
-      stmt.run(
+      if (!name) continue;
+      if (lat === null || lng === null) {
+        if (!address) continue;
+        const area = parseAddressArea(address);
+        addressStmt.run(
+          options.type,
+          name,
+          address,
+          area.region1 ?? null,
+          area.region2 ?? null,
+          area.region3 ?? null,
+          pick(row, options.openingHourFields) ?? null,
+          pick(row, options.phoneFields) ?? null,
+          options.source,
+          null
+        );
+        count += 1;
+        continue;
+      }
+      coordinateStmt.run(
         options.type,
         name,
-        pick(row, options.addressFields) ?? null,
+        address ?? null,
         lat,
         lng,
         pick(row, options.openingHourFields) ?? null,
         pick(row, options.phoneFields) ?? null,
         options.source,
-        JSON.stringify(row)
+        null
       );
       count += 1;
     }

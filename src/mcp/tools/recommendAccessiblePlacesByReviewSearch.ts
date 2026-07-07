@@ -770,7 +770,8 @@ export async function recommendAccessiblePlacesByReviewSearch(
       { lat: place.lat, lng: place.lng },
       "all",
       radiusM,
-      4
+      4,
+      place.roadAddress ?? place.address
     );
     const publicEvidence = [
       ...publicData.findMatchingAccessibilityEvidence(place),

@@ -9,6 +9,7 @@ data/*.db
 data/*.db-*
 data/import/*
 !data/import/README.md
+!data/import/public_restrooms.csv
 !data/import/wheelchair_chargers.csv
 logs
 .DS_Store

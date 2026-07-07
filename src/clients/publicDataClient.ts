@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AppConfig } from "../config.js";
+import { addressAreaScore, parseAddressArea } from "../core/addressArea.js";
 import { distanceMeters } from "../core/distance.js";
 import { compactPlaceName } from "../core/placeMatcher.js";
 import { normalizeText } from "../core/normalize.js";
@@ -13,6 +14,18 @@ interface SupportFacilityRow {
   address: string | null;
   lat: number;
   lng: number;
+  opening_hours: string | null;
+  phone: string | null;
+  source: string;
+}
+
+interface SupportFacilityAddressRow {
+  type: "accessible_restroom" | "wheelchair_charger";
+  name: string;
+  address: string;
+  region1: string | null;
+  region2: string | null;
+  region3: string | null;
   opening_hours: string | null;
   phone: string | null;
   source: string;
@@ -92,7 +105,8 @@ export class PublicDataClient {
     origin: Coordinates,
     type: "accessible_restroom" | "wheelchair_charger" | "all",
     radiusM: number,
-    limit: number
+    limit: number,
+    originAddress?: string
   ): SupportFacility[] {
     if (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)) return [];
     if (!fs.existsSync(this.config.dbPath)) return [];
@@ -103,7 +117,7 @@ export class PublicDataClient {
         `SELECT type, name, address, lat, lng, opening_hours, phone, source FROM support_facilities ${typeClause}`
       );
       const rows = (type === "all" ? stmt.all() : stmt.all(type)) as unknown as SupportFacilityRow[];
-      return rows
+      const coordinateFacilities = rows
         .map((row) => ({
           type: row.type,
           name: row.name,
@@ -118,11 +132,53 @@ export class PublicDataClient {
         .filter((facility) => facility.distance_m !== undefined && facility.distance_m <= radiusM)
         .sort((a, b) => (a.distance_m ?? 0) - (b.distance_m ?? 0))
         .slice(0, limit);
+      const addressFacilities = this.findAddressMatchedSupportFacilities(db, originAddress, type, limit);
+      return dedupeSupportFacilities([...coordinateFacilities, ...addressFacilities]);
     } catch {
       return [];
     } finally {
       db.close();
     }
+  }
+
+  private findAddressMatchedSupportFacilities(
+    db: DatabaseSync,
+    originAddress: string | undefined,
+    type: "accessible_restroom" | "wheelchair_charger" | "all",
+    limit: number
+  ): SupportFacility[] {
+    if (!originAddress || type === "wheelchair_charger") return [];
+    const area = parseAddressArea(originAddress);
+    if (!area.region1 || !area.region2) return [];
+    const typeClause = type === "all" ? "type = 'accessible_restroom'" : "type = ?";
+    const params = type === "all"
+      ? [area.region1, area.region2]
+      : [type, area.region1, area.region2];
+    const rows = db
+      .prepare(
+        `SELECT type, name, address, region1, region2, region3, opening_hours, phone, source
+           FROM support_facility_address_records
+          WHERE ${typeClause}
+            AND region1 = ?
+            AND region2 = ?`
+      )
+      .all(...params) as unknown as SupportFacilityAddressRow[];
+    return rows
+      .map((row) => ({
+        row,
+        score: addressAreaScore(originAddress, row.address)
+      }))
+      .filter((item) => item.score >= 65)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ row }) => ({
+        type: row.type,
+        name: row.name,
+        address: row.address,
+        opening_hours: row.opening_hours ?? undefined,
+        phone: row.phone ?? undefined,
+        source: row.source
+      }));
   }
 
   findMatchingAccessibilityEvidence(
@@ -176,4 +232,16 @@ export class PublicDataClient {
   ensureDatabaseDirectory(): void {
     fs.mkdirSync(path.dirname(this.config.dbPath), { recursive: true });
   }
+}
+
+function dedupeSupportFacilities(facilities: SupportFacility[]): SupportFacility[] {
+  const seen = new Set<string>();
+  const deduped: SupportFacility[] = [];
+  for (const facility of facilities) {
+    const key = `${facility.type}:${normalizeText(facility.name)}:${normalizeText(facility.address ?? "")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(facility);
+  }
+  return deduped;
 }

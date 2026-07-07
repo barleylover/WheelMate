@@ -55,6 +55,34 @@ describe("PublicDataClient", () => {
         "BF 인증 시설로 확인되었습니다.",
         0.9
       );
+      db.prepare(
+        `INSERT INTO support_facility_address_records
+          (type, name, address, region1, region2, region3, opening_hours, phone, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        "accessible_restroom",
+        "사당역 공중화장실",
+        "서울특별시 동작구 사당로 5",
+        "서울",
+        "동작구",
+        "사당로",
+        "상시",
+        "02-123-4567",
+        "전국공중화장실표준데이터"
+      );
+      db.prepare(
+        `INSERT INTO support_facility_address_records
+          (type, name, address, region1, region2, region3, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        "accessible_restroom",
+        "동작구 다른도로 화장실",
+        "서울특별시 동작구 노량진로 10",
+        "서울",
+        "동작구",
+        "노량진로",
+        "전국공중화장실표준데이터"
+      );
     } finally {
       db.close();
     }
@@ -83,5 +111,29 @@ describe("PublicDataClient", () => {
       evidence_type: "bf_certified",
       level: "building_or_facility_level"
     });
+  });
+
+  it("returns address-only public restrooms by administrative address area", () => {
+    const client = new PublicDataClient(testConfig());
+    const facilities = client.findNearbySupportFacilities(
+      { lat: 37.4811, lng: 126.9811 },
+      "all",
+      800,
+      4,
+      "서울 동작구 사당로 1"
+    );
+
+    expect(facilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "accessible_restroom",
+          name: "사당역 공중화장실",
+          address: "서울특별시 동작구 사당로 5",
+          source: "전국공중화장실표준데이터"
+        })
+      ])
+    );
+    expect(facilities[0]?.distance_m).toBeUndefined();
+    expect(facilities.map((facility) => facility.name)).not.toContain("동작구 다른도로 화장실");
   });
 });

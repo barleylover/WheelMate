@@ -110,10 +110,12 @@ export interface ReviewAnalysis {
   attribution: string[];
 }
 
-export interface SupportFacility extends Coordinates {
+export interface SupportFacility {
   type: "accessible_restroom" | "wheelchair_charger";
   name: string;
   address?: string;
+  lat?: number;
+  lng?: number;
   distance_m?: number;
   opening_hours?: string;
   phone?: string;
