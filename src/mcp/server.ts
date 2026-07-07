@@ -113,6 +113,30 @@ function jsonResult(value: unknown): CallToolResult {
 
 function answerJsonResult(value: Record<string, unknown>): CallToolResult {
   const answer = typeof value.answer_markdown === "string" ? value.answer_markdown : JSON.stringify(value, null, 2);
+  const compactValue = {
+    query_interpretation: value.query_interpretation,
+    recommendation_count: Array.isArray(value.recommendations) ? value.recommendations.length : 0,
+    recommendations: Array.isArray(value.recommendations)
+      ? value.recommendations.map((item) => {
+        const record = item as Record<string, unknown>;
+        return {
+          rank: record.rank,
+          name: record.name,
+          address: record.address,
+          distance_text: record.distance_text,
+          phone: record.phone,
+          recommendation_reason: record.recommendation_reason,
+          source_line: record.source_line,
+          map_link: record.map_link,
+          roadview_link: record.roadview_link,
+          support_facilities_display: record.support_facilities_display
+        };
+      })
+      : [],
+    fallback_reason: value.fallback_reason,
+    candidate_diagnostics: value.candidate_diagnostics,
+    search_diagnostics: value.search_diagnostics
+  };
   return {
     content: [
       {
@@ -121,7 +145,7 @@ function answerJsonResult(value: Record<string, unknown>): CallToolResult {
       },
       {
         type: "text",
-        text: JSON.stringify(value, null, 2)
+        text: JSON.stringify(compactValue, null, 2)
       }
     ]
   };
