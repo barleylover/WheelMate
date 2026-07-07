@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+__pycache__
+outputs
+*.pyc
+api_key.env
+api_key.txt
+willchair_*.csv
+willchair_*.json
+disabled_facilities_cache*.csv
+disabled_facility_detail_cache.csv
+match_disabled_facilities.py
