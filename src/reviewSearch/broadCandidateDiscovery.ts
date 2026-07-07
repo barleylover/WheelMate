@@ -502,7 +502,7 @@ async function searchSource(
 }
 
 function discoverySources(sources: SearchSource[]): SearchSource[] {
-  const priority: SearchSource[] = ["naver_blog", "daum_blog", "naver_web", "daum_web", "naver_cafe", "daum_cafe"];
+  const priority: SearchSource[] = ["naver_blog", "daum_blog", "daum_web", "naver_web", "naver_cafe", "daum_cafe"];
   return priority.filter((source) => sources.includes(source)).slice(0, 3);
 }
 

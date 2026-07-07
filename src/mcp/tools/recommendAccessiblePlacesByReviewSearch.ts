@@ -1,6 +1,7 @@
 import type { AppConfig } from "../../config.js";
 import { KakaoLocalClient } from "../../clients/kakaoLocalClient.js";
 import { PublicDataClient } from "../../clients/publicDataClient.js";
+import { distanceMeters } from "../../core/distance.js";
 import { normalizeCategory } from "../../core/categoryMapper.js";
 import { fallbackReasonForReviewResults } from "../../core/fallback.js";
 import {
@@ -21,7 +22,7 @@ import {
   sortRankedPlaces
 } from "../../reviewSearch/reviewRanking.js";
 import { splitPreferences } from "../../reviewSearch/queryBuilder.js";
-import type { Category, RankedPlace, ReviewSignal } from "../../types.js";
+import type { Category, Origin, PlaceCandidate, RankedPlace, ReviewSignal } from "../../types.js";
 
 export interface RecommendAccessiblePlacesInput {
   query?: string;
@@ -78,6 +79,19 @@ function placeMatchesContentPreferences(place: { name: string; category: string 
   return preferences.some((preference) => text.includes(preference));
 }
 
+function fillMissingHubAddress(place: PlaceCandidate, origin: Origin, location: string): PlaceCandidate {
+  if (place.address || place.roadAddress || !origin.address) return place;
+  const text = `${location} ${origin.name} ${place.name}`;
+  if (!/(?:공항|역|터미널|항만|항구|백화점|몰|스타필드)/.test(text)) return place;
+  const distanceM = distanceMeters(origin, { lat: place.lat, lng: place.lng });
+  if (distanceM > 150) return place;
+  return {
+    ...place,
+    address: `${origin.address} (시설 내)`,
+    distance_m: place.distance_m ?? Math.round(distanceM)
+  };
+}
+
 export async function recommendAccessiblePlacesByReviewSearch(
   input: RecommendAccessiblePlacesInput,
   config: AppConfig
@@ -114,7 +128,9 @@ export async function recommendAccessiblePlacesByReviewSearch(
     }),
     kakaoLocal.searchNearbyPlaces(input.location, origin, category, radiusM, candidateLimit)
   ]);
-  const mergedCandidates = mergePlaceCandidates(discoveredCandidates, localCandidates);
+  const mergedCandidates = mergePlaceCandidates(discoveredCandidates, localCandidates).map((place) =>
+    fillMissingHubAddress(place, origin, input.location)
+  );
   const preferenceMatchedCandidates = contentPreferences.length > 0
     ? mergedCandidates.filter((place) => placeMatchesContentPreferences(place, contentPreferences))
     : mergedCandidates;

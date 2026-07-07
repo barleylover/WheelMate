@@ -50,6 +50,10 @@ function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1).trim()}…`;
 }
 
+function displayAddress(place: { roadAddress?: string; address?: string }): string | undefined {
+  return place.roadAddress || place.address || undefined;
+}
+
 function serializeEvidence(evidence: ReviewEvidence[], limit = 3): Array<Record<string, unknown>> {
   return evidence.slice(0, limit).map((item) => ({
     source: item.source,
@@ -96,7 +100,7 @@ function recommendationToJson(item: RankedPlace, rank: number): Record<string, u
     rank,
     name: place.name,
     category: place.category,
-    address: place.roadAddress ?? place.address,
+    address: displayAddress(place),
     distance_m: place.distance_m,
     review_signal_grade: item.review.review_signal_grade,
     official_support_grade: item.official_support_grade,
@@ -142,7 +146,7 @@ function unverifiedToJson(item: RankedPlace): Record<string, unknown> {
   return {
     name: place.name,
     category: place.category,
-    address: place.roadAddress ?? place.address,
+    address: displayAddress(place),
     distance_m: place.distance_m,
     review_signal_grade: item.review.review_signal_grade,
     official_support_grade: item.official_support_grade,
