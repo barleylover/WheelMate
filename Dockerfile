@@ -11,6 +11,7 @@ WORKDIR /app
 
 COPY previsit_checklist.py /app/previsit_checklist.py
 COPY mcp_server.py /app/mcp_server.py
+COPY mcp_http_server.py /app/mcp_http_server.py
 COPY data/ /app/data/
 COPY README_MVP.md /app/README_MVP.md
 COPY USAGE_EXAMPLES.md /app/USAGE_EXAMPLES.md
@@ -20,4 +21,6 @@ RUN useradd --create-home --shell /usr/sbin/nologin appuser \
 
 USER appuser
 
-CMD ["python", "/app/mcp_server.py"]
+EXPOSE 8080
+
+CMD ["python", "/app/mcp_http_server.py"]
