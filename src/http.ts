@@ -29,8 +29,41 @@ app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json(runtimeStatus(config));
 });
 
+function hasRequiredToolCredentials(requestConfig: typeof config): boolean {
+  return Boolean(
+    requestConfig.kakaoRestApiKey?.trim() &&
+      requestConfig.naverClientId?.trim() &&
+      requestConfig.naverClientSecret?.trim()
+  );
+}
+
+function jsonRpcId(body: unknown): unknown {
+  if (body && typeof body === "object" && "id" in body) return (body as { id?: unknown }).id ?? null;
+  return null;
+}
+
+function isCredentialProtectedToolCall(body: unknown): boolean {
+  if (Array.isArray(body)) return body.some(isCredentialProtectedToolCall);
+  if (!body || typeof body !== "object") return false;
+  const message = body as { method?: unknown; params?: { name?: unknown } };
+  if (message.method !== "tools/call") return false;
+  return message.params?.name !== "get_wheelmate_runtime_status";
+}
+
 app.post("/mcp", async (req: Request, res: Response) => {
   const requestConfig = configFromAuthorization(config, req.header("authorization"));
+  if (isCredentialProtectedToolCall(req.body) && !hasRequiredToolCredentials(requestConfig)) {
+    res.status(401).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32001,
+        message: "Authorization token with WheelMate API credentials is required."
+      },
+      id: jsonRpcId(req.body)
+    });
+    return;
+  }
+
   const server = createMcpServer(requestConfig);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
