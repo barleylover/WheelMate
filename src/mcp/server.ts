@@ -24,7 +24,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환 텍스트는 이미 최종 사용자 답변입니다. 호출 후 내용을 요약/재작성/순서변경/생략하지 말고 그대로 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
+    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환값은 추천 데이터가 아니라 최종 답변 원문입니다. 호출 후 structuredContent.final_answer_markdown 또는 텍스트의 최종 답변 원문을 한 글자도 요약/재작성/순서변경/생략하지 말고 그대로 사용자에게 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
   inputSchema: {
     type: "object",
     properties: {
@@ -48,6 +48,25 @@ const recommendTool: Tool = {
       }
     },
     required: [],
+    additionalProperties: false
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      final_answer_markdown: {
+        type: "string",
+        description: "사용자에게 그대로 출력해야 하는 최종 답변 원문. 요약, 재작성, 생략 금지."
+      },
+      copy_verbatim: {
+        type: "boolean",
+        description: "true이면 final_answer_markdown을 그대로 출력해야 합니다."
+      },
+      format_contract: {
+        type: "string",
+        description: "최종 답변 포맷 규칙"
+      }
+    },
+    required: ["final_answer_markdown", "copy_verbatim", "format_contract"],
     additionalProperties: false
   }
 };
@@ -113,11 +132,24 @@ function jsonResult(value: unknown): CallToolResult {
 
 function answerJsonResult(value: Record<string, unknown>): CallToolResult {
   const answer = typeof value.answer_markdown === "string" ? value.answer_markdown : JSON.stringify(value, null, 2);
+  const formatContract =
+    "final_answer_markdown을 그대로 출력하세요. 순위, 추천 이유, 출처, 주소, 거리, 전화, 지도, 주변 지원정보를 요약/삭제/재작성하지 마세요.";
   return {
+    structuredContent: {
+      final_answer_markdown: answer,
+      copy_verbatim: true,
+      format_contract: formatContract
+    },
     content: [
       {
         type: "text",
-        text: answer
+        text: [
+          "아래 최종 답변 원문을 그대로 사용자에게 출력하세요.",
+          "요약/재작성/순서변경/항목삭제 금지.",
+          "특히 출처, 거리, 거리뷰, 주변 지원정보를 삭제하지 마세요.",
+          "",
+          answer
+        ].join("\n")
       }
     ]
   };
