@@ -23,7 +23,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "WheelMate는 사용자의 위치와 원하는 장소/음식 조건을 바탕으로 네이버·다음 검색 결과의 블로그·카페·웹문서에서 휠체어 접근성 후기 신호가 확인된 장소를 추천합니다. 추천 이유, 출처 링크, 주소, 거리, 전화번호, 카카오맵/거리뷰, 주변 장애인 화장실·전동휠체어 충전기 정보를 함께 제공합니다.",
+    "WheelMate의 장소 추천 툴입니다. 사용자의 위치와 원하는 장소/음식 조건을 입력받아 네이버·다음 검색 결과의 블로그·카페·웹문서에서 휠체어 접근성 후기 신호가 확인된 장소를 찾아 추천합니다. 각 추천 결과에는 추천 이유, 출처 링크, 주소, 거리, 전화번호, 카카오맵/거리뷰, 주변 장애인 화장실·전동휠체어 충전기 정보를 함께 제공합니다.",
   annotations: {
     title: "WheelMate 접근성 장소 추천",
     readOnlyHint: true,
