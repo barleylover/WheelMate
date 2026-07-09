@@ -47,7 +47,7 @@ function isCredentialProtectedToolCall(body: unknown): boolean {
   if (!body || typeof body !== "object") return false;
   const message = body as { method?: unknown; params?: { name?: unknown } };
   if (message.method !== "tools/call") return false;
-  return message.params?.name !== "get_wheelmate_runtime_status";
+  return message.params?.name !== "check_runtime_status";
 }
 
 app.post("/mcp", async (req: Request, res: Response) => {

@@ -24,7 +24,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환값은 추천 데이터가 아니라 최종 답변 원문입니다. 호출 후 structuredContent.final_answer_markdown 또는 텍스트의 최종 답변 원문을 한 글자도 요약/재작성/순서변경/생략하지 말고 그대로 사용자에게 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
+    "WheelMate는 사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환값은 추천 데이터가 아니라 최종 답변 원문입니다. 호출 후 structuredContent.final_answer_markdown 또는 텍스트의 최종 답변 원문을 한 글자도 요약/재작성/순서변경/생략하지 말고 그대로 사용자에게 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
   annotations: {
     title: "WheelMate 접근성 장소 추천",
     readOnlyHint: true,
@@ -81,7 +81,7 @@ const recommendTool: Tool = {
 const searchReviewsTool: Tool = {
   name: "search_place_accessibility_reviews",
   description:
-    "특정 장소 하나에 대해 6개 검색 API를 사용해 접근성 관련 검색 결과와 신호를 반환합니다.",
+    "WheelMate에서 특정 장소 하나에 대해 6개 검색 API를 사용해 휠체어 접근성 관련 검색 결과와 후기 신호를 반환합니다.",
   annotations: {
     title: "WheelMate 장소 접근성 후기 검색",
     readOnlyHint: true,
@@ -105,7 +105,7 @@ const searchReviewsTool: Tool = {
 
 const supportFacilitiesTool: Tool = {
   name: "find_nearby_support_facilities",
-  description: "장애인 화장실 또는 전동휠체어 급속충전기를 주변에서 찾습니다.",
+  description: "WheelMate에서 장애인 화장실 또는 전동휠체어 급속충전기를 주변에서 찾습니다.",
   annotations: {
     title: "WheelMate 주변 지원시설 검색",
     readOnlyHint: true,
@@ -127,9 +127,9 @@ const supportFacilitiesTool: Tool = {
 };
 
 const runtimeStatusTool: Tool = {
-  name: "get_wheelmate_runtime_status",
+  name: "check_runtime_status",
   description:
-    "현재 MCP 서버의 빌드 SHA, 검색 API 키 설정 여부, 활성 검색 소스, 경고를 확인합니다. 비밀키 값은 반환하지 않습니다. 배포/도구함 문제를 진단할 때 먼저 호출하세요.",
+    "WheelMate MCP 서버의 빌드 SHA, 검색 API 키 설정 여부, 활성 검색 소스, 경고를 확인합니다. 비밀키 값은 반환하지 않습니다. 배포/도구함 문제를 진단할 때 먼저 호출하세요.",
   annotations: {
     title: "WheelMate 런타임 상태 확인",
     readOnlyHint: true,
@@ -263,7 +263,7 @@ export function createMcpServer(config: AppConfig): Server {
         return jsonResult(await findNearbySupportFacilities(input, config));
       }
 
-      if (request.params.name === "get_wheelmate_runtime_status") {
+      if (request.params.name === "check_runtime_status") {
         return jsonResult(runtimeStatus(config));
       }
 
