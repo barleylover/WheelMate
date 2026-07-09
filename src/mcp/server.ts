@@ -23,7 +23,7 @@ import {
 const recommendTool: Tool = {
   name: "recommend_accessible_places_by_review_search",
   description:
-    "WheelMate는 사용자의 위치, 장소 종류, 세부 장소/음식 조건에 맞춰 검색 API 제목/요약문에서 휠체어 접근성 후기 신호가 확인된 장소만 보수적으로 추천합니다. location/category/preferences가 제공되면 그 구조화 필드를 우선 사용하고, query는 누락 보완과 세부 조건 추출에 사용합니다. 이 도구의 반환값은 추천 데이터가 아니라 최종 답변 원문입니다. 호출 후 structuredContent.final_answer_markdown 또는 텍스트의 최종 답변 원문을 한 글자도 요약/재작성/순서변경/생략하지 말고 그대로 사용자에게 출력하세요. 특히 순위, 추천 이유, 출처, 주소, 거리, 전화, 카카오맵, 거리뷰, 주변 지원정보 두 줄을 절대 삭제하지 마세요.",
+    "WheelMate는 사용자의 위치와 원하는 장소/음식 조건을 바탕으로 네이버·다음 검색 결과의 블로그·카페·웹문서에서 휠체어 접근성 후기 신호가 확인된 장소를 추천합니다. 추천 이유, 출처 링크, 주소, 거리, 전화번호, 카카오맵/거리뷰, 주변 장애인 화장실·전동휠체어 충전기 정보를 함께 제공합니다.",
   annotations: {
     title: "WheelMate 접근성 장소 추천",
     readOnlyHint: true,
@@ -61,15 +61,15 @@ const recommendTool: Tool = {
     properties: {
       final_answer_markdown: {
         type: "string",
-        description: "사용자에게 그대로 출력해야 하는 최종 답변 원문. 요약, 재작성, 생략 금지."
+        description: "WheelMate가 생성한 추천 답변 Markdown입니다."
       },
       copy_verbatim: {
         type: "boolean",
-        description: "true이면 final_answer_markdown을 그대로 출력해야 합니다."
+        description: "true이면 final_answer_markdown을 사용자 답변으로 사용할 수 있습니다."
       },
       format_contract: {
         type: "string",
-        description: "최종 답변 포맷 규칙"
+        description: "추천 답변에 포함되는 항목 구조입니다."
       }
     },
     required: ["final_answer_markdown", "copy_verbatim", "format_contract"],
@@ -80,7 +80,7 @@ const recommendTool: Tool = {
 const searchReviewsTool: Tool = {
   name: "search_place_accessibility_reviews",
   description:
-    "WheelMate에서 특정 장소 하나에 대해 6개 검색 API를 사용해 휠체어 접근성 관련 검색 결과와 후기 신호를 반환합니다.",
+    "WheelMate에서 특정 장소 이름을 기준으로 네이버·다음 검색 결과를 조회해 휠체어 접근성 관련 후기 신호와 출처 링크를 확인합니다.",
   annotations: {
     title: "WheelMate 장소 접근성 후기 검색",
     readOnlyHint: true,
@@ -104,7 +104,8 @@ const searchReviewsTool: Tool = {
 
 const supportFacilitiesTool: Tool = {
   name: "find_nearby_support_facilities",
-  description: "WheelMate에서 장애인 화장실 또는 전동휠체어 급속충전기를 주변에서 찾습니다.",
+  description:
+    "WheelMate에서 입력한 위치 주변의 장애인 화장실과 전동휠체어 급속충전기 후보를 공공데이터 기반으로 찾아 이름, 주소, 거리 정보를 반환합니다.",
   annotations: {
     title: "WheelMate 주변 지원시설 검색",
     readOnlyHint: true,
