@@ -7,7 +7,6 @@ import {
   type Tool
 } from "@modelcontextprotocol/sdk/types.js";
 import type { AppConfig } from "../config.js";
-import { runtimeStatus } from "../runtimeStatus.js";
 import {
   findNearbySupportFacilities,
   type FindNearbySupportFacilitiesInput
@@ -126,26 +125,7 @@ const supportFacilitiesTool: Tool = {
   }
 };
 
-const runtimeStatusTool: Tool = {
-  name: "check_runtime_status",
-  description:
-    "WheelMate MCP 서버의 빌드 SHA, 검색 API 키 설정 여부, 활성 검색 소스, 경고를 확인합니다. 비밀키 값은 반환하지 않습니다. 배포/도구함 문제를 진단할 때 먼저 호출하세요.",
-  annotations: {
-    title: "WheelMate 런타임 상태 확인",
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-    idempotentHint: true
-  },
-  inputSchema: {
-    type: "object",
-    properties: {},
-    required: [],
-    additionalProperties: false
-  }
-};
-
-const tools = [recommendTool, searchReviewsTool, supportFacilitiesTool, runtimeStatusTool];
+const tools = [recommendTool, searchReviewsTool, supportFacilitiesTool];
 
 function jsonResult(value: unknown): CallToolResult {
   return {
@@ -261,10 +241,6 @@ export function createMcpServer(config: AppConfig): Server {
           limit: readNumber(args, "limit")
         };
         return jsonResult(await findNearbySupportFacilities(input, config));
-      }
-
-      if (request.params.name === "check_runtime_status") {
-        return jsonResult(runtimeStatus(config));
       }
 
       return errorResult(`Unknown tool: ${request.params.name}`);

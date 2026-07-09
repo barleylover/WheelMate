@@ -274,7 +274,7 @@ describe("buildRecommendResponse", () => {
       fallbackRecommendations: []
     });
 
-    expect(String(response.answer_markdown)).toContain("Kakao Local API 키가 서버 또는 Authorization 토큰으로 전달되지 않아");
+    expect(String(response.answer_markdown)).toContain("Kakao Local API 키가 서버 환경변수/시크릿으로 전달되지 않아");
     expect(response.candidate_diagnostics).toEqual({
       fallback_reason: "kakao_local_credentials_missing",
       likely_issue: "kakao_local_api_key_missing_or_not_passed"

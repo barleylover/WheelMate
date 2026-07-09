@@ -46,8 +46,7 @@ function isCredentialProtectedToolCall(body: unknown): boolean {
   if (Array.isArray(body)) return body.some(isCredentialProtectedToolCall);
   if (!body || typeof body !== "object") return false;
   const message = body as { method?: unknown; params?: { name?: unknown } };
-  if (message.method !== "tools/call") return false;
-  return message.params?.name !== "check_runtime_status";
+  return message.method === "tools/call";
 }
 
 app.post("/mcp", async (req: Request, res: Response) => {

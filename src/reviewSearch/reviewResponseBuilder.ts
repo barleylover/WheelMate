@@ -194,7 +194,7 @@ function zeroRecommendationMessage(
   diagnostics: SearchDiagnostics
 ): string {
   if (fallbackReason === "kakao_local_credentials_missing") {
-    return "Kakao Local API 키가 서버 또는 Authorization 토큰으로 전달되지 않아 위치 좌표와 후보 장소를 찾지 못했습니다. `check_runtime_status`에서 `kakao_rest_api_key_configured`가 true인지 먼저 확인해 주세요.";
+    return "Kakao Local API 키가 서버 환경변수/시크릿으로 전달되지 않아 위치 좌표와 후보 장소를 찾지 못했습니다. 카카오클라우드 MCP 서버의 KAKAO_REST_API_KEY 설정을 확인해 주세요.";
   }
   if (fallbackReason === "location_unresolved") {
     return "요청 위치의 좌표를 찾지 못해 주변 후보 장소를 만들지 못했습니다. 위치명을 더 구체적으로 입력하거나 Kakao Local API 상태를 확인해 주세요.";
@@ -203,7 +203,7 @@ function zeroRecommendationMessage(
     return "요청한 세부 장소/음식 조건에 맞는 주변 후보가 없어 추천을 만들지 못했습니다. 같은 위치에서 더 넓은 장소 종류로 다시 시도해 주세요.";
   }
   if (diagnostics.likely_issue === "search_api_credentials_missing_or_not_passed") {
-    return "검색 API 인증이 배포 서버까지 전달되지 않아 후기 근거를 가져오지 못했습니다. `check_runtime_status`에서 Naver/Kakao 키 설정 여부를 먼저 확인해 주세요.";
+    return "검색 API 인증이 배포 서버까지 전달되지 않아 후기 근거를 가져오지 못했습니다. 카카오클라우드 MCP 서버의 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, KAKAO_REST_API_KEY 설정을 확인해 주세요.";
   }
   if (diagnostics.likely_issue === "search_api_calls_unavailable") {
     return "검색 API 호출이 실패해 후기 근거를 가져오지 못했습니다. 잠시 후 다시 시도하거나 런타임 상태의 unavailable_sources를 확인해 주세요.";
