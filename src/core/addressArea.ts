@@ -77,6 +77,15 @@ function specificTokenStartIndex(area: AddressArea): number {
   return 2;
 }
 
+function firstAddressNumber(area: AddressArea): number | undefined {
+  const token = area.tokens
+    .slice(specificTokenStartIndex(area))
+    .find((item) => /^\d+$/.test(item));
+  if (!token) return undefined;
+  const value = Number.parseInt(token, 10);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 export function parseAddressArea(address: string | undefined | null): AddressArea {
   const tokens = normalizeText(address ?? "")
     .split(/\s+/)
@@ -109,5 +118,13 @@ export function addressAreaScore(placeAddress: string | undefined, facilityAddre
     if (placeTokens.has(token)) sharedSpecificTokens += 1;
   }
   score += Math.min(sharedSpecificTokens, 2) * 20;
+  const placeNumber = firstAddressNumber(placeArea);
+  const facilityNumber = firstAddressNumber(facilityArea);
+  if (placeNumber !== undefined && facilityNumber !== undefined) {
+    const difference = Math.abs(placeNumber - facilityNumber);
+    if (difference === 0) score += 15;
+    else if (difference <= 20) score += 10;
+    else if (difference > 50) score -= 25;
+  }
   return Math.min(score, 99);
 }

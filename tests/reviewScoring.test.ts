@@ -54,4 +54,18 @@ describe("scoreReviewEvidence", () => {
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(99);
   });
+
+  it("does not recommend from a known positive report older than five years", () => {
+    const stale = evidence({
+      polarity: "positive",
+      strength: "strong",
+      type: "wheelchair_direct",
+      matched_text: "휠체어 출입 가능"
+    });
+    stale.date = "20150101";
+
+    const result = scoreReviewEvidence([stale]);
+    expect(result.grade).toBe("R4");
+    expect(result.positive).toEqual([]);
+  });
 });

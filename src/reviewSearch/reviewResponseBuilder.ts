@@ -27,6 +27,7 @@ function signalMessage(evidence: ReviewEvidence[]): string[] {
   return uniqueMessages(evidence.flatMap((item) =>
     item.signals
       .filter((signal) => signal.polarity === "positive")
+      .filter((signal) => !signal.subject || signal.subject === "venue")
       .map((signal) => `${sourceLabel(item.source)} 검색 결과에서 '${signal.matched_text}' 표현 언급`)
   ));
 }
@@ -69,10 +70,16 @@ function serializeEvidence(evidence: ReviewEvidence[], limit = 3): Array<Record<
     snippet: truncate(item.snippet, 140),
     date: item.date,
     place_match_score: item.place_match_score,
+    place_name_match: item.place_name_match,
+    place_matched_name: item.place_matched_name,
+    place_matched_field: item.place_matched_field,
+    place_location_match: item.place_location_match,
+    attribution_verified: item.attribution_verified === true,
     signals: item.signals.slice(0, 4).map((signal) => ({
       polarity: signal.polarity,
       type: signal.type,
-      matched_text: signal.matched_text
+      matched_text: signal.matched_text,
+      subject: signal.subject
     }))
   }));
 }
@@ -82,7 +89,10 @@ function serializeSupportFacilities(facilities: SupportFacility[], limit = 3): A
     type: facility.type,
     name: facility.name,
     address: facility.address,
-    distance_m: facility.distance_m
+    distance_m: facility.distance_m,
+    opening_hours: facility.opening_hours,
+    phone: facility.phone,
+    match_basis: facility.match_basis
   }));
 }
 
@@ -98,6 +108,8 @@ const DEFAULT_CAUTIONS = [
   "검색 결과 요약문 기반 참고 신호이며 공식 접근성 정보가 아닙니다.",
   "방문 전 전화 확인을 권장합니다."
 ];
+
+const PREVISIT_CHECKS = "출입구 단차·경사로, 출입문 폭, 엘리베이터, 장애인 화장실을 전화로 확인하세요.";
 
 const ALL_SEARCH_SOURCES: SearchSource[] = [
   "naver_blog",
@@ -291,6 +303,65 @@ function unverifiedToJson(item: RankedPlace): Record<string, unknown> {
   };
 }
 
+function verificationRequiredReason(item: RankedPlace): string {
+  const unavailableReasons = Object.values(item.review.unavailable_sources);
+  if (unavailableReasons.some((reason) => reason.includes("credentials_missing"))) {
+    return "검색 API 인증 문제로 접근성 후기를 확인하지 못했습니다.";
+  }
+  if (unavailableReasons.length > 0 && item.review.results.length === 0) {
+    return "검색 API 호출 실패로 접근성 후기를 확인하지 못했습니다.";
+  }
+  if (item.review.review_signal_grade === "R3") {
+    return "접근성 관련 표현은 있었지만 긍정 여부가 불명확했습니다.";
+  }
+  if (item.official_support_grade === "O1" || item.official_support_grade === "O2") {
+    return "공공데이터 보조 근거는 있으나 이 매장의 휠체어 출입 후기는 확인되지 않았습니다.";
+  }
+  return "검색 결과에서 이 매장의 명확한 휠체어 출입 가능 근거를 확인하지 못했습니다.";
+}
+
+function verificationRequiredDisplayBlock(item: RankedPlace, rank: number): string {
+  const place = item.place;
+  return [
+    `확인 필요 후보 ${rank}. ${place.name}`,
+    "접근성 상태: 미확인(접근성이 좋다고 확인된 추천이 아닙니다)",
+    `확인 필요 이유: ${verificationRequiredReason(item)}`,
+    `주소: ${displayAddress(place) ?? "주소 정보 없음"}`,
+    `거리: ${formatDistance(place.distance_m)}`,
+    `전화: ${formatPhone(place.phone)}`,
+    `지도: [카카오맵](${kakaoMapLink(place.name, place.lat, place.lng)}) [거리뷰](${kakaoRoadviewLink(place)})`,
+    `방문 전 확인: ${PREVISIT_CHECKS}`,
+    "",
+    "주변 지원정보:",
+    ...supportFacilitySection(item.support_facilities_nearby)
+  ].join("\n");
+}
+
+function verificationRequiredToJson(item: RankedPlace, rank: number): Record<string, unknown> {
+  const place = item.place;
+  return {
+    rank,
+    name: place.name,
+    category: place.category,
+    address: displayAddress(place),
+    distance_m: place.distance_m,
+    distance_text: formatDistance(place.distance_m),
+    phone: formatPhone(place.phone),
+    accessibility_status: "unverified",
+    verification_required_reason: verificationRequiredReason(item),
+    previsit_checks: PREVISIT_CHECKS,
+    display_markdown: verificationRequiredDisplayBlock(item, rank),
+    review_signal_grade: item.review.review_signal_grade,
+    official_support_grade: item.official_support_grade,
+    support_facilities_nearby: serializeSupportFacilities(item.support_facilities_nearby),
+    links: {
+      kakao_map: kakaoMapLink(place.name, place.lat, place.lng),
+      kakao_route: kakaoRouteLink(place.name, place.lat, place.lng),
+      kakao_roadview: kakaoRoadviewLink(place)
+    }
+  };
+}
+
 function formatDistance(distanceM: number | undefined): string {
   if (distanceM === undefined || !Number.isFinite(distanceM)) return "거리 정보 없음";
   const rounded = Math.max(0, Math.round(distanceM));
@@ -310,12 +381,27 @@ function formatPhone(phone: string | undefined): string {
 }
 
 function bestPositiveEvidence(evidence: ReviewEvidence[]): ReviewEvidence | undefined {
-  return evidence.find((item) => item.signals.some((signal) => signal.polarity === "positive"));
+  const strengthScore = { strong: 3, medium: 2, weak: 1 } as const;
+  return [...evidence]
+    .filter((item) => item.signals.some((signal) =>
+      signal.polarity === "positive" && (!signal.subject || signal.subject === "venue")
+    ))
+    .sort((a, b) => {
+      const positiveA = a.signals
+        .filter((signal) => signal.polarity === "positive" && (!signal.subject || signal.subject === "venue"))
+        .reduce((sum, signal) => sum + strengthScore[signal.strength], 0);
+      const positiveB = b.signals
+        .filter((signal) => signal.polarity === "positive" && (!signal.subject || signal.subject === "venue"))
+        .reduce((sum, signal) => sum + strengthScore[signal.strength], 0);
+      if (positiveA !== positiveB) return positiveB - positiveA;
+      return b.place_match_score - a.place_match_score;
+    })[0];
 }
 
 function displayMatchedText(value: string): string {
   return value
     .replace(/\s+/g, " ")
+    .replace(/(출입|접근|진입|이용|방문)\s+(?:이|가)\s+(가능)/g, "$1 $2")
     .replace(/이용가능/g, "이용 가능")
     .replace(/진입가능/g, "진입 가능")
     .replace(/출입가능/g, "출입 가능")
@@ -328,6 +414,7 @@ function recommendationReason(item: RankedPlace): string {
   const matchedTexts = uniqueMessages(
     positive?.signals
       .filter((signal) => signal.polarity === "positive")
+      .filter((signal) => !signal.subject || signal.subject === "venue")
       .map((signal) => displayMatchedText(signal.matched_text)) ?? []
   );
   if (matchedTexts.length > 0) {
@@ -366,7 +453,15 @@ function supportFacilityLabel(type: SupportFacility["type"]): string {
 
 function supportFacilityLine(facility: SupportFacility): string {
   const address = facility.address ?? "주소 정보 없음";
-  return `- 주변 ${supportFacilityLabel(facility.type)} 존재. 이름: ${facility.name}, 주소: ${address}, 거리: ${formatDistance(facility.distance_m)}`;
+  const operationalDetails = [
+    facility.opening_hours ? `운영: ${facility.opening_hours}` : undefined,
+    facility.phone ? `전화: ${facility.phone}` : undefined
+  ].filter(Boolean).join(", ");
+  const suffix = operationalDetails ? `, ${operationalDetails}` : "";
+  if (facility.match_basis === "address_area" || facility.distance_m === undefined) {
+    return `- ${supportFacilityLabel(facility.type)} 공공데이터 후보. 이름: ${facility.name}, 주소: ${address}, 정확한 거리: 미확인${suffix}`;
+  }
+  return `- 주변 ${supportFacilityLabel(facility.type)} 공공데이터 후보. 이름: ${facility.name}, 주소: ${address}, 거리: ${formatDistance(facility.distance_m)}${suffix}`;
 }
 
 function supportFacilityDisplay(facilities: SupportFacility[]): string[] {
@@ -377,8 +472,8 @@ function supportFacilitySection(facilities: SupportFacility[]): string[] {
   const restroom = facilities.find((facility) => facility.type === "accessible_restroom");
   const charger = facilities.find((facility) => facility.type === "wheelchair_charger");
   return [
-    restroom ? supportFacilityLine(restroom) : "- 주변 장애인 화장실 없음",
-    charger ? supportFacilityLine(charger) : "- 주변 전동휠체어 충전기 없음"
+    restroom ? supportFacilityLine(restroom) : "- 주변 장애인 화장실: 공공데이터에서 확인된 후보 없음(미등재 가능)",
+    charger ? supportFacilityLine(charger) : "- 주변 전동휠체어 충전기: 공공데이터에서 확인된 후보 없음(미등재 가능)"
   ];
 }
 
@@ -387,18 +482,31 @@ function buildMessage(
   recommendations: RankedPlace[],
   notRecommended: RankedPlace[],
   unverified: RankedPlace[],
+  fallbackRecommendations: RankedPlace[],
   fallbackReason: string | null,
   fallbackUsed: boolean
 ): string {
   const lines: string[] = [];
   const categoryLabel = categoryKeyword(interpretation.category) || "장소";
   const diagnostics = buildSearchDiagnostics([...recommendations, ...notRecommended, ...unverified]);
-  if (recommendations.length === 0) {
+  if (recommendations.length === 0 && fallbackRecommendations.length === 0) {
     lines.push(
       `${interpretation.location} 근처 ${categoryLabel} 후보 중에서 블로그·카페·웹문서 검색 결과에 휠체어 접근성 관련 언급이 있는 장소를 보수적으로 정리했습니다.`
     );
     lines.push("");
     lines.push(zeroRecommendationMessage(fallbackReason, diagnostics));
+  } else if (recommendations.length === 0) {
+    lines.push(
+      `${interpretation.location}의 ${categoryLabel} 후보는 찾았지만, 현재 검색 결과만으로 휠체어 접근성이 좋다고 확인된 장소는 없었습니다.`
+    );
+    lines.push(
+      "결과를 빈 목록으로 끝내지 않고 실제 장소 후보를 안내합니다. 아래 후보는 접근성 미확인이므로 방문 전 전화 확인이 필요합니다."
+    );
+    lines.push("");
+    for (const [index, item] of fallbackRecommendations.entries()) {
+      lines.push(verificationRequiredDisplayBlock(item, index + 1));
+      lines.push("");
+    }
   } else {
     for (const [index, item] of recommendations.entries()) {
       const place = item.place;
@@ -428,13 +536,16 @@ function buildMessage(
   if (interpretation.unsupported_preferences.includes("조용한")) {
     lines.push("- 조용한 정도는 검색 결과만으로 신뢰성 있게 판단하지 않았습니다.");
   }
+  if (interpretation.search_warnings?.includes("content_preference_relaxed_because_no_matching_place_was_found")) {
+    lines.push("- 요청한 세부 음식·장소 조건과 정확히 일치하는 후보가 부족해, 같은 업종의 일반 후보까지 넓혀 확인했습니다.");
+  }
   if (notRecommended.length > 0) {
     lines.push("");
     lines.push(`주의 후보 ${notRecommended.length}곳은 추천에서 제외했습니다.`);
   }
   if (fallbackUsed) {
     lines.push(
-      "요청하신 카페/음식점 중 후기 기반 접근성 신호가 충분한 후보가 부족해, 접근성 정보가 있는 대체 장소도 함께 안내합니다."
+      "위 확인 필요 후보는 지역·업종 조건에는 맞지만 접근성이 검증된 추천으로 간주하면 안 됩니다."
     );
   }
   lines.push("주의: 이 결과는 검색 결과의 제목과 요약문을 기반으로 한 참고 신호이며 공식 접근성 정보가 아닙니다. 방문 전 전화 확인을 권장합니다.");
@@ -480,13 +591,14 @@ export function buildRecommendResponse(input: {
     input.recommendations,
     input.notRecommended,
     input.unverified,
+    input.fallbackRecommendations,
     input.fallbackReason,
     input.fallbackUsed
   );
   return {
     answer_markdown: messageForUser,
     answer_usage_note:
-      "사용자에게 답할 때는 answer_markdown을 우선 그대로 사용하세요. recommendations를 재요약하더라도 source/link/kakao_roadview 필드는 반드시 포함해야 합니다.",
+      "사용자에게 답할 때는 answer_markdown을 우선 그대로 사용하세요. fallback_recommendations는 접근성 미확인 후보이므로 검증된 추천처럼 표현하면 안 됩니다.",
     query_interpretation: input.interpretation,
     origin: input.origin,
     ranking_policy: {
@@ -505,7 +617,7 @@ export function buildRecommendResponse(input: {
     candidate_diagnostics: candidateDiagnostics,
     search_diagnostics: searchDiagnostics,
     fallback_recommendations: input.fallbackRecommendations.map((item, index) =>
-      recommendationToJson(item, index + 1)
+      verificationRequiredToJson(item, index + 1)
     ),
     message_for_user: messageForUser
   };

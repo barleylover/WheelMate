@@ -25,6 +25,7 @@ function testConfig(): AppConfig {
     defaultLimit: 5,
     maxPlaceCandidates: 5,
     maxReviewSearchCalls: 60,
+    maxExternalApiCallsPerRequest: 40,
     searchResultsPerQuery: 3,
     searchTimeoutMs: 3500,
     dbPath
@@ -69,6 +70,40 @@ describe("PublicDataClient", () => {
         "상시",
         "02-123-4567",
         "전국공중화장실표준데이터"
+      );
+      db.prepare(
+        `INSERT INTO support_facility_address_records
+          (type, name, address, region1, region2, region3, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        "accessible_restroom",
+        "같은 도로지만 먼 화장실",
+        "서울특별시 동작구 사당로 500",
+        "서울",
+        "동작구",
+        "사당로",
+        "전국공중화장실표준데이터"
+      );
+      const coordinateStmt = db.prepare(
+        `INSERT INTO support_facilities
+          (type, name, address, lat, lng, source)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      );
+      coordinateStmt.run(
+        "wheelchair_charger",
+        "가까운 충전기",
+        "서울 동작구 사당로 3",
+        37.4812,
+        126.9812,
+        "전국전동휠체어급속충전기표준데이터"
+      );
+      coordinateStmt.run(
+        "wheelchair_charger",
+        "먼 충전기",
+        "부산",
+        35.1796,
+        129.0756,
+        "전국전동휠체어급속충전기표준데이터"
       );
       db.prepare(
         `INSERT INTO support_facility_address_records
@@ -129,11 +164,19 @@ describe("PublicDataClient", () => {
           type: "accessible_restroom",
           name: "사당역 공중화장실",
           address: "서울특별시 동작구 사당로 5",
-          source: "전국공중화장실표준데이터"
+          source: "전국공중화장실표준데이터",
+          match_basis: "address_area"
         })
       ])
     );
-    expect(facilities[0]?.distance_m).toBeUndefined();
+    expect(facilities.find((facility) => facility.name === "사당역 공중화장실")?.distance_m).toBeUndefined();
     expect(facilities.map((facility) => facility.name)).not.toContain("동작구 다른도로 화장실");
+    expect(facilities.map((facility) => facility.name)).not.toContain("같은 도로지만 먼 화장실");
+    expect(facilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "가까운 충전기", match_basis: "coordinates" })
+      ])
+    );
+    expect(facilities.map((facility) => facility.name)).not.toContain("먼 충전기");
   });
 });

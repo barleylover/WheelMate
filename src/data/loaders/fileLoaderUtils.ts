@@ -42,6 +42,9 @@ interface SupportFacilityCsvOptions {
   lngFields: string[];
   openingHourFields?: string[];
   phoneFields?: string[];
+  includeRow?: (row: Record<string, string>) => boolean;
+  openingHoursFromRow?: (row: Record<string, string>) => string | undefined;
+  metadataFromRow?: (row: Record<string, string>) => Record<string, string | undefined>;
 }
 
 function importPath(filename: string): string {
@@ -126,6 +129,13 @@ function numberValue(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function hasPositiveNumericField(row: Record<string, string>, fields: string[]): boolean {
+  return fields.some((field) => {
+    const value = numberValue(row[field]);
+    return value !== null && value > 0;
+  });
+}
+
 function withDatabase<T>(fn: (db: DatabaseSync) => T): T {
   const db = openDatabase(config);
   try {
@@ -195,11 +205,15 @@ export function loadSupportFacilityCsv(options: SupportFacilityCsvOptions): numb
     );
     let count = 0;
     for (const row of rows) {
+      if (options.includeRow && !options.includeRow(row)) continue;
       const name = pick(row, options.nameFields);
       const address = pick(row, options.addressFields);
       const lat = numberValue(pick(row, options.latFields));
       const lng = numberValue(pick(row, options.lngFields));
       if (!name) continue;
+      const openingHours = options.openingHoursFromRow?.(row) ?? pick(row, options.openingHourFields);
+      const metadata = options.metadataFromRow?.(row);
+      const rawJson = metadata ? JSON.stringify(metadata) : null;
       if (lat === null || lng === null) {
         if (!address) continue;
         const area = parseAddressArea(address);
@@ -210,10 +224,10 @@ export function loadSupportFacilityCsv(options: SupportFacilityCsvOptions): numb
           area.region1 ?? null,
           area.region2 ?? null,
           area.region3 ?? null,
-          pick(row, options.openingHourFields) ?? null,
+          openingHours ?? null,
           pick(row, options.phoneFields) ?? null,
           options.source,
-          null
+          rawJson
         );
         count += 1;
         continue;
@@ -224,10 +238,10 @@ export function loadSupportFacilityCsv(options: SupportFacilityCsvOptions): numb
         address ?? null,
         lat,
         lng,
-        pick(row, options.openingHourFields) ?? null,
+        openingHours ?? null,
         pick(row, options.phoneFields) ?? null,
         options.source,
-        null
+        rawJson
       );
       count += 1;
     }

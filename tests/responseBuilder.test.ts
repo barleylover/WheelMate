@@ -96,8 +96,8 @@ describe("buildRecommendResponse", () => {
     expect(text).toContain("지도: [카카오맵]");
     expect(text).toContain("[거리뷰](https://map.kakao.com/link/roadview/12345)");
     expect(text).toContain("주변 지원정보:");
-    expect(text).toContain("- 주변 장애인 화장실 존재. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m");
-    expect(text).toContain("- 주변 전동휠체어 충전기 존재. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m");
+    expect(text).toContain("- 주변 장애인 화장실 공공데이터 후보. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m");
+    expect(text).toContain("- 주변 전동휠체어 충전기 공공데이터 후보. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m");
     expect(response.recommendations).toEqual([
       expect.objectContaining({
         phone: "02-123-4567",
@@ -111,8 +111,8 @@ describe("buildRecommendResponse", () => {
           link: "https://example.com"
         }),
         support_facilities_display: expect.arrayContaining([
-          "주변 장애인 화장실 존재. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m",
-          "주변 전동휠체어 충전기 존재. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m"
+          "주변 장애인 화장실 공공데이터 후보. 이름: 홍대입구역 장애인화장실, 주소: 서울 마포구, 거리: 약 180m",
+          "주변 전동휠체어 충전기 공공데이터 후보. 이름: 홍대입구역 급속충전기, 주소: 서울 마포구 양화로, 거리: 약 450m"
         ])
       })
     ]);
@@ -167,8 +167,8 @@ describe("buildRecommendResponse", () => {
     const text = JSON.stringify(response);
     expect(text).toContain("추천 이유: 검색 API에서 휠체어 접근성 근거 확인 필요");
     expect(text).toContain("출처: 검색 API 접근성 근거 없음");
-    expect(text).toContain("- 주변 장애인 화장실 없음");
-    expect(text).toContain("- 주변 전동휠체어 충전기 없음");
+    expect(text).toContain("- 주변 장애인 화장실: 공공데이터에서 확인된 후보 없음(미등재 가능)");
+    expect(text).toContain("- 주변 전동휠체어 충전기: 공공데이터에서 확인된 후보 없음(미등재 가능)");
     expect(text).not.toContain("추천 이유: 공공데이터 기반 접근성 보조 근거가 확인됨");
     expect(text).not.toContain("접근성 후기 출처 없음");
   });
@@ -279,5 +279,61 @@ describe("buildRecommendResponse", () => {
       fallback_reason: "kakao_local_credentials_missing",
       likely_issue: "kakao_local_api_key_missing_or_not_passed"
     });
+  });
+
+  it("shows real places as clearly unverified fallback candidates instead of returning an empty answer", () => {
+    const unverified: RankedPlace = {
+      ...ranked,
+      place: {
+        ...ranked.place,
+        name: "확인필요카페",
+        address: "서울 송파구",
+        distance_m: 320
+      },
+      review: {
+        ...ranked.review,
+        place_name: "확인필요카페",
+        review_signal_grade: "R4",
+        review_signal_score: 0,
+        positive_signals: [],
+        negative_signals: [],
+        ambiguous_signals: [],
+        results: []
+      },
+      official_support_grade: "none",
+      recommendation_status: "unverified",
+      ranking_score: 100,
+      official_support_score: 0,
+      public_support_evidence: []
+    };
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "잠실역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "잠실역", lat: 37.51, lng: 127.1 },
+      recommendations: [],
+      notRecommended: [],
+      unverified: [unverified],
+      fallbackUsed: true,
+      fallbackReason: "review_positive_results_below_threshold",
+      fallbackRecommendations: [unverified]
+    });
+    const answer = String(response.answer_markdown);
+
+    expect(answer).toContain("확인 필요 후보 1. 확인필요카페");
+    expect(answer).toContain("접근성 상태: 미확인");
+    expect(answer).toContain("출입구 단차·경사로");
+    expect(answer).not.toContain("추천에 넣을 만큼 명확한");
+    expect(response.fallback_recommendations).toEqual([
+      expect.objectContaining({
+        name: "확인필요카페",
+        accessibility_status: "unverified",
+        verification_required_reason: expect.any(String)
+      })
+    ]);
   });
 });

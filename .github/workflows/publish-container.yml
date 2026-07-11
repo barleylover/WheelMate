@@ -5,19 +5,46 @@ on:
     branches:
       - feat/review-search-mcp
       - master
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: wheelmate
 
 jobs:
-  build-and-push:
+  validate:
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and test
+        run: pnpm run check
+
+  build-and-push:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v5

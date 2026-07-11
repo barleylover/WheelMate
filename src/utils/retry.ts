@@ -1,10 +1,17 @@
+import type { RequestBudget } from "./requestBudget.js";
+
 export async function fetchJson<T>(
   url: string,
   init: RequestInit,
-  timeoutMs: number
+  timeoutMs: number,
+  budget?: RequestBudget
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (budget && !budget.tryConsume()) {
+      if (lastError instanceof Error) throw lastError;
+      throw new Error("request_budget_exhausted");
+    }
     try {
       const signal = AbortSignal.timeout(timeoutMs);
       const response = await fetch(url, { ...init, signal });
@@ -22,7 +29,8 @@ export async function fetchJson<T>(
         throw error;
       }
     }
-    await sleep(180 * (attempt + 1));
+    const throttled = lastError instanceof Error && /HTTP 429/.test(lastError.message);
+    await sleep((throttled ? 600 : 200) * (attempt + 1));
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

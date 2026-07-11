@@ -24,11 +24,25 @@ function isFloorOnlySignal(signal: ReviewSignal): boolean {
   return signal.type === "basement_or_floor";
 }
 
+function positiveEvidenceIsCurrentEnough(item: ReviewEvidence): boolean {
+  const age = yearsOld(item.date);
+  // Search APIs do not always expose a date, so unknown dates stay usable but
+  // are explicitly cautioned in the response. A known positive report older
+  // than five years, or implausibly far in the future, cannot by itself prove
+  // current accessibility.
+  return age === null || (age >= -0.25 && age <= 5);
+}
+
 export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResult {
   const signals = evidence.flatMap((item) => item.signals);
-  const positive = signals.filter((signal) => signal.polarity === "positive");
-  const negative = signals.filter((signal) => signal.polarity === "negative");
+  const venueSignals = signals.filter((signal) => !signal.subject || signal.subject === "venue");
+  const currentPositiveEvidence = evidence.filter(positiveEvidenceIsCurrentEnough);
+  const positive = currentPositiveEvidence
+    .flatMap((item) => item.signals)
+    .filter((signal) => (!signal.subject || signal.subject === "venue") && signal.polarity === "positive");
+  const negative = venueSignals.filter((signal) => signal.polarity === "negative");
   const ambiguous = signals.filter((signal) => signal.polarity === "ambiguous");
+  const venueAmbiguous = venueSignals.filter((signal) => signal.polarity === "ambiguous");
   const strongPositive = positive.filter((signal) => signal.strength === "strong");
   const strongNegative = negative.filter((signal) => signal.strength === "strong");
   const mediumPositive = positive.filter((signal) => signal.strength === "medium");
@@ -36,11 +50,14 @@ export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResu
   const nonFloorPositive = positive.filter((signal) => !isFloorOnlySignal(signal));
   const strongNonFloorPositive = strongPositive.filter((signal) => !isFloorOnlySignal(signal));
   const positiveSources = new Set(
-    evidence
+    currentPositiveEvidence
       .filter((item) => item.signals.some((signal) => signal.polarity === "positive" && !isFloorOnlySignal(signal)))
+      .filter((item) => item.signals.some((signal) => (!signal.subject || signal.subject === "venue") && signal.polarity === "positive" && !isFloorOnlySignal(signal)))
       .map((item) => item.source)
   );
-  const negativeResults = evidence.filter((item) => item.signals.some((signal) => signal.polarity === "negative")).length;
+  const negativeResults = evidence.filter((item) => item.signals.some((signal) =>
+    (!signal.subject || signal.subject === "venue") && signal.polarity === "negative"
+  )).length;
   const conflict = positive.length > 0 && negative.length > 0;
 
   let rawScore = 0;
@@ -58,7 +75,7 @@ export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResu
     else if (item.place_match_score >= 0.45) rawScore += 2;
   }
   rawScore -= strongNegative.length * 60;
-  rawScore -= ambiguous.length * 15;
+  rawScore -= venueAmbiguous.length * 15;
   if (conflict) rawScore -= 30;
 
   let grade: ReviewSignalGrade = "R4";
@@ -68,7 +85,7 @@ export function scoreReviewEvidence(evidence: ReviewEvidence[]): ReviewScoreResu
     grade = "R1";
   } else if (nonFloorPositive.length >= 1) {
     grade = "R2";
-  } else if (ambiguous.length >= 1) {
+  } else if (venueAmbiguous.length >= 1) {
     grade = "R3";
   }
 

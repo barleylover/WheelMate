@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS public_accessibility_evidence (
   FOREIGN KEY(place_id) REFERENCES places(id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_public_accessibility_evidence_lat_lng
+  ON public_accessibility_evidence(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_public_accessibility_evidence_name
+  ON public_accessibility_evidence(name);
+
 CREATE TABLE IF NOT EXISTS support_facilities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL CHECK(type IN ('accessible_restroom', 'wheelchair_charger')),

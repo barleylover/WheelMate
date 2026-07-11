@@ -31,6 +31,9 @@ export function runtimeStatus(config: AppConfig): Record<string, unknown> {
   };
   const enabledSources = enabledSearchSources(config);
   const warnings: string[] = [];
+  if (!configured(config.mcpAccessToken)) {
+    warnings.push("MCP_ACCESS_TOKEN is missing; HTTP tool calls require a valid credential-bundle token");
+  }
   if (!credentialStatus.kakao_rest_api_key_configured) warnings.push("KAKAO_REST_API_KEY is missing");
   if (!credentialStatus.naver_client_id_configured) warnings.push("NAVER_CLIENT_ID is missing");
   if (!credentialStatus.naver_client_secret_configured) warnings.push("NAVER_CLIENT_SECRET is missing");
@@ -52,6 +55,7 @@ export function runtimeStatus(config: AppConfig): Record<string, unknown> {
       use_daum_search: config.useDaumSearch,
       enabled_sources: enabledSources,
       max_review_search_calls: config.maxReviewSearchCalls,
+      max_external_api_calls_per_request: config.maxExternalApiCallsPerRequest,
       search_results_per_query: config.searchResultsPerQuery
     },
     place_search: {

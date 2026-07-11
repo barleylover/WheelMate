@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config.js";
 import type { SearchSource, SourceSearchOutcome } from "../types.js";
 import { normalizeDaumDocument, type DaumSearchDocument } from "../reviewSearch/resultNormalizer.js";
+import type { RequestBudget } from "../utils/requestBudget.js";
 import { fetchJson, safeErrorMessage } from "../utils/retry.js";
 
 interface DaumSearchResponse {
@@ -10,7 +11,10 @@ interface DaumSearchResponse {
 export class DaumSearchClient {
   private readonly baseUrl = "https://dapi.kakao.com";
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    private readonly budget?: RequestBudget
+  ) {}
 
   private unavailable(source: SearchSource, query: string, error: string): SourceSearchOutcome {
     return { source, query, results: [], unavailable: true, error };
@@ -57,7 +61,8 @@ export class DaumSearchClient {
       const response = await fetchJson<DaumSearchResponse>(
         url.toString(),
         { headers: { Authorization: `KakaoAK ${this.config.kakaoRestApiKey}` } },
-        this.config.searchTimeoutMs
+        this.config.searchTimeoutMs,
+        this.budget
       );
       return {
         source,

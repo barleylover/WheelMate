@@ -22,6 +22,7 @@ const baseConfig: AppConfig = {
   defaultLimit: 5,
   maxPlaceCandidates: 5,
   maxReviewSearchCalls: 60,
+  maxExternalApiCallsPerRequest: 40,
   searchResultsPerQuery: 3,
   searchTimeoutMs: 3500,
   dbPath: "./data/accessibility.db"

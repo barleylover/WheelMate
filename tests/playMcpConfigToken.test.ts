@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { configFromAuthorization, createPlayMcpConfigToken } from "../src/auth/playMcpConfigToken.js";
+import {
+  configFromAuthorization,
+  createPlayMcpConfigToken,
+  resolveHttpAuthorization
+} from "../src/auth/playMcpConfigToken.js";
 import type { AppConfig } from "../src/config.js";
 
 const baseConfig: AppConfig = {
@@ -16,6 +20,7 @@ const baseConfig: AppConfig = {
   defaultLimit: 5,
   maxPlaceCandidates: 5,
   maxReviewSearchCalls: 60,
+  maxExternalApiCallsPerRequest: 40,
   searchResultsPerQuery: 3,
   searchTimeoutMs: 3500,
   dbPath: "./data/accessibility.db"
@@ -45,5 +50,40 @@ describe("PlayMCP config token", () => {
   it("falls back to base config for missing or invalid token", () => {
     expect(configFromAuthorization(baseConfig, undefined)).toBe(baseConfig);
     expect(configFromAuthorization(baseConfig, "Bearer invalid")).toBe(baseConfig);
+  });
+
+  it("does not authorize anonymous callers merely because server API keys exist", () => {
+    const serverConfig: AppConfig = {
+      ...baseConfig,
+      kakaoRestApiKey: "server-kakao",
+      naverClientId: "server-naver-id",
+      naverClientSecret: "server-naver-secret"
+    };
+
+    expect(resolveHttpAuthorization(serverConfig, undefined)).toMatchObject({
+      authorized: false,
+      mode: "none"
+    });
+    expect(resolveHttpAuthorization(serverConfig, "Bearer invalid")).toMatchObject({
+      authorized: false,
+      mode: "none"
+    });
+  });
+
+  it("authorizes either the shared token or a complete credential bundle", () => {
+    const sharedConfig: AppConfig = { ...baseConfig, mcpAccessToken: "shared-secret" };
+    expect(resolveHttpAuthorization(sharedConfig, "Bearer shared-secret")).toMatchObject({
+      authorized: true,
+      mode: "shared_token"
+    });
+
+    const bundle = createPlayMcpConfigToken({
+      KAKAO_REST_API_KEY: "bundle-kakao",
+      NAVER_CLIENT_ID: "bundle-id",
+      NAVER_CLIENT_SECRET: "bundle-secret"
+    } as NodeJS.ProcessEnv);
+    const resolved = resolveHttpAuthorization(baseConfig, `Bearer ${bundle}`);
+    expect(resolved).toMatchObject({ authorized: true, mode: "credential_bundle" });
+    expect(resolved.config.kakaoRestApiKey).toBe("bundle-kakao");
   });
 });

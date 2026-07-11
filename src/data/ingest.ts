@@ -37,3 +37,11 @@ for (const [name, load] of loaders) {
   const count = await load();
   logger.info("public_data_loader_finished", { name, count });
 }
+
+const compactDb = openDatabase(config);
+try {
+  compactDb.exec("VACUUM");
+  logger.info("sqlite_compacted", { dbPath: config.dbPath });
+} finally {
+  compactDb.close();
+}

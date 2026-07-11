@@ -7,11 +7,14 @@ export function supportEvidenceFromFacilities(facilities: SupportFacility[]): Pu
     level: "nearby_support_only",
     evidence_type:
       facility.type === "accessible_restroom" ? "accessible_restroom_nearby" : "wheelchair_charger_nearby",
-    detail:
-      facility.type === "accessible_restroom"
-        ? "주변 공중 장애인화장실 후보가 확인되었습니다."
-        : "주변 전동휠체어 급속충전기 후보가 확인되었습니다.",
-    confidence: 0.55,
+    detail: facility.match_basis === "address_area"
+      ? facility.type === "accessible_restroom"
+        ? "동일 행정구역의 공중 장애인화장실 후보이며 정확한 거리는 확인되지 않았습니다."
+        : "동일 행정구역의 전동휠체어 급속충전기 후보이며 정확한 거리는 확인되지 않았습니다."
+      : facility.type === "accessible_restroom"
+        ? "좌표 기반 주변 공중 장애인화장실 후보가 확인되었습니다."
+        : "좌표 기반 주변 전동휠체어 급속충전기 후보가 확인되었습니다.",
+    confidence: facility.match_basis === "address_area" ? 0.35 : 0.55,
     distance_m: facility.distance_m
   }));
 }

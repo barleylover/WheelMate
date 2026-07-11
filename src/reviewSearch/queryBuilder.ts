@@ -39,11 +39,10 @@ export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 5):
       : context.category;
   const baseParts = [context.placeName, context.neighborhood];
   const candidates = [
-    compact([...baseParts, "휠체어 접근성"]),
-    compact([...baseParts, "휠체어 출입 가능"]),
+    compact([...baseParts, "휠체어 출입 접근"]),
     compact([...baseParts, "문턱 없음 경사로"]),
-    compact([...baseParts, "계단 엘리베이터"]),
-    compact([...baseParts, "장애인 화장실"]),
+    compact([...baseParts, "계단 엘리베이터 장애인 화장실"]),
+    compact([...baseParts, "휠체어 이용 가능"]),
     compact([...baseParts, "유모차 휠체어"]),
     compact([context.placeName, context.district, "무장애 배리어프리"]),
     compact([context.placeName, context.addressToken, category, "휠체어"])

@@ -2,6 +2,7 @@ import type { AppConfig } from "../config.js";
 import type { SearchSource, SourceSearchOutcome } from "../types.js";
 import { fetchJson, safeErrorMessage } from "../utils/retry.js";
 import { normalizeNaverItem, type NaverSearchItem } from "../reviewSearch/resultNormalizer.js";
+import type { RequestBudget } from "../utils/requestBudget.js";
 
 interface NaverSearchResponse {
   items?: NaverSearchItem[];
@@ -10,7 +11,10 @@ interface NaverSearchResponse {
 export class NaverSearchClient {
   private readonly baseUrl = "https://openapi.naver.com";
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    private readonly budget?: RequestBudget
+  ) {}
 
   private unavailable(source: SearchSource, query: string, error: string): SourceSearchOutcome {
     return { source, query, results: [], unavailable: true, error };
@@ -62,7 +66,8 @@ export class NaverSearchClient {
             "X-Naver-Client-Secret": this.config.naverClientSecret!
           }
         },
-        this.config.searchTimeoutMs
+        this.config.searchTimeoutMs,
+        this.budget
       );
       return {
         source,

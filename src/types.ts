@@ -26,6 +26,7 @@ export type RecommendationStatus =
 
 export type SignalPolarity = "positive" | "negative" | "ambiguous";
 export type SignalStrength = "strong" | "medium" | "weak";
+export type SignalSubject = "venue" | "transit" | "support_facility" | "unknown";
 export type SignalType =
   | "wheelchair_direct"
   | "entrance_step"
@@ -78,11 +79,18 @@ export interface ReviewSignal {
   type: SignalType;
   matched_text: string;
   strength: SignalStrength;
+  subject?: SignalSubject;
+  context_text?: string;
 }
 
 export interface ReviewEvidence extends NormalizedSearchResult {
   place_match_score: number;
   signals: ReviewSignal[];
+  place_name_match?: "exact" | "alias" | "none";
+  place_matched_name?: string;
+  place_matched_field?: "title" | "snippet";
+  place_location_match?: boolean;
+  attribution_verified?: boolean;
 }
 
 export interface SourceSearchOutcome {
@@ -120,6 +128,7 @@ export interface SupportFacility {
   opening_hours?: string;
   phone?: string;
   source: string;
+  match_basis?: "coordinates" | "address_area";
 }
 
 export interface PublicSupportEvidence {
@@ -153,9 +162,13 @@ export interface RankedPlace {
 
 export interface QueryInterpretation {
   location: string;
+  scope?: "point" | "region";
   category: Category;
   radius_m: number;
   preferences: string[];
   unsupported_preferences: string[];
   content_preferences?: string[];
+  content_term_source?: "explicit" | "query" | "none";
+  hard_content_filter?: boolean;
+  search_warnings?: string[];
 }

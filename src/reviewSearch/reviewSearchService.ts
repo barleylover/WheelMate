@@ -8,12 +8,16 @@ import type {
   SearchSource,
   SourceSearchOutcome
 } from "../types.js";
+import { clampInteger, MAX_REVIEW_RESULT_LIMIT } from "../core/inputLimits.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
-import { buildReviewQueries } from "./queryBuilder.js";
-import { calculatePlaceRelevance, placeToRelevanceContext } from "./placeRelevance.js";
+import type { RequestBudget, RequestBudgetSnapshot } from "../utils/requestBudget.js";
+import { buildReviewQueries, buildReviewQueryContext } from "./queryBuilder.js";
+import { assessPlaceRelevance, placeEvidenceIsRecommendationSafe, placeToRelevanceContext } from "./placeRelevance.js";
 import { extractSignals } from "./signalExtractor.js";
 import { scoreReviewEvidence } from "./signalScoring.js";
 import { enabledSearchSources, sourceAttribution } from "./sourceRouter.js";
+import { evidenceIdentity } from "./evidenceIdentity.js";
+import { buildBalancedSearchCalls, logicalSearchCallLimit } from "../search/searchCallPlanner.js";
 
 export interface SearchPlaceReviewsInput {
   place_name: string;
@@ -27,9 +31,12 @@ export class ReviewSearchService {
   private readonly naver: NaverSearchClient;
   private readonly daum: DaumSearchClient;
 
-  constructor(private readonly config: AppConfig) {
-    this.naver = new NaverSearchClient(config);
-    this.daum = new DaumSearchClient(config);
+  constructor(
+    private readonly config: AppConfig,
+    private readonly budget?: RequestBudget
+  ) {
+    this.naver = new NaverSearchClient(config, budget);
+    this.daum = new DaumSearchClient(config, budget);
   }
 
   async searchPlaceAccessibilityReviews(input: SearchPlaceReviewsInput): Promise<ReviewAnalysis> {
@@ -40,7 +47,12 @@ export class ReviewSearchService {
       lat: 0,
       lng: 0
     };
-    return this.analyzePlace(place, input.neighborhood, [], input.limit ?? this.config.defaultLimit);
+    const resultLimit = clampInteger(input.limit, this.config.defaultLimit, 1, MAX_REVIEW_RESULT_LIMIT);
+    const analysis = await this.analyzePlace(place, input.neighborhood, [], 3);
+    return {
+      ...analysis,
+      results: analysis.results.slice(0, resultLimit)
+    };
   }
 
   async analyzePlace(
@@ -49,55 +61,55 @@ export class ReviewSearchService {
     preferences: string[] = [],
     maxQueries = 3
   ): Promise<ReviewAnalysis> {
+    const boundedMaxQueries = clampInteger(maxQueries, 3, 0, 5);
     const primaryQueries = buildReviewQueries(
-      {
-        placeName: place.name,
-        neighborhood,
-        district: undefined,
-        addressToken: undefined,
-        category: place.category,
-        preferences
-      },
-      maxQueries
+      buildReviewQueryContext(place, neighborhood, preferences),
+      boundedMaxQueries
     );
-    const aliasQueries = (place.searchAliases ?? [])
-      .slice(0, 2)
-      .flatMap((alias) =>
-        buildReviewQueries(
-          {
-            placeName: alias,
-            neighborhood,
-            district: undefined,
-            addressToken: undefined,
-            category: place.category,
-            preferences
-          },
-          3
-        )
-      );
-    const queries = [...new Set([...aliasQueries, ...primaryQueries])].slice(0, maxQueries);
-    const sources = enabledSearchSources(this.config);
-    const outcomes = await this.runSearches(queries, sources);
+    // searchAliases contain discovery/content hints, not guaranteed venue-name
+    // aliases. Using them as the place name produced generic queries such as
+    // "횟집 휠체어" and then attached unrelated results to a concrete venue.
+    const queries = [...new Set(primaryQueries)].slice(0, boundedMaxQueries);
+    const outcomes = await this.searchQueries(queries);
+    const searchedSources = [...new Set(outcomes.map((outcome) => outcome.source))];
     const relevanceContext = placeToRelevanceContext(place, neighborhood);
     const fetchedEvidence: ReviewEvidence[] = outcomes
       .flatMap((outcome) => outcome.results)
-      .map((result) => ({
-        ...result,
-        place_match_score: calculatePlaceRelevance(result, relevanceContext),
-        signals: extractSignals(result)
-      }))
-      .filter((result) => result.place_match_score >= 0.45 && result.signals.length > 0)
       .map((result) => {
+        const relevance = assessPlaceRelevance(result, relevanceContext);
+        return {
+          ...result,
+          place_match_score: relevance.score,
+          place_name_match: relevance.name_match,
+          place_matched_name: relevance.matched_name,
+          place_matched_field: relevance.matched_field,
+          place_location_match: relevance.location_match,
+          signals: extractSignals(result)
+        };
+      })
+      .filter((result) =>
+        result.place_match_score >= 0.45 &&
+        result.signals.length > 0 &&
+        placeEvidenceIsRecommendationSafe(result, {
+          score: result.place_match_score,
+          name_match: result.place_name_match,
+          matched_name: result.place_matched_name,
+          matched_field: result.place_matched_field,
+          location_match: result.place_location_match
+        }, result.signals)
+      )
+      .map((result) => {
+        const attributed = { ...result, attribution_verified: true as const };
         if (result.place_match_score < 0.65) {
           return {
-            ...result,
+            ...attributed,
             signals: result.signals.map((signal) => ({
               ...signal,
               strength: signal.strength === "strong" ? "medium" : signal.strength
             }))
           };
         }
-        return result;
+        return attributed;
       });
     const evidence = this.uniqueEvidence([...(place.discoveryEvidence ?? []), ...fetchedEvidence]);
 
@@ -123,44 +135,40 @@ export class ReviewSearchService {
       negative_signals: score.negative,
       ambiguous_signals: score.ambiguous,
       results: evidence,
-      searched_sources: sources,
+      searched_sources: searchedSources,
       source_counts: sourceCounts,
       unavailable_sources: unavailableSources,
       cautions: [
         "검색 결과 요약문 기준 참고 신호이며 공식 접근성 정보가 아닙니다.",
         "블로그/카페 본문 전체를 분석한 결과가 아닙니다."
       ],
-      attribution: sourceAttribution(sources)
+      attribution: sourceAttribution(searchedSources)
     };
   }
 
   private uniqueEvidence(evidence: ReviewEvidence[]): ReviewEvidence[] {
     const seen = new Set<string>();
     return evidence.filter((item) => {
-      const key = `${item.source}:${item.link}:${item.snippet}`;
+      const key = evidenceIdentity(item);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
   }
 
-  private async runSearches(queries: string[], sources: SearchSource[]): Promise<SourceSearchOutcome[]> {
-    const calls: Array<{ source: SearchSource; query: string }> = [];
-    for (const query of queries) {
-      for (const source of sources) {
-        if (calls.length >= this.config.maxReviewSearchCalls) break;
-        calls.push({ source, query });
-      }
-      if (calls.length >= this.config.maxReviewSearchCalls) break;
-    }
-    return mapWithConcurrency(
-      calls,
-      Math.min(8, Math.max(1, sources.length * 2)),
-      async ({ source, query }) => {
+  async searchQueries(queries: string[], maxCalls = this.config.maxReviewSearchCalls): Promise<SourceSearchOutcome[]> {
+    const sources = enabledSearchSources(this.config);
+    const logicalCallLimit = logicalSearchCallLimit(maxCalls, this.budget?.remaining);
+    const calls = buildBalancedSearchCalls(queries, sources, logicalCallLimit);
+    const indexedCalls = calls.map((call, index) => ({ ...call, index }));
+    const outcomes: Array<SourceSearchOutcome | undefined> = new Array(calls.length);
+    const runProviderQueue = async (provider: "naver" | "daum"): Promise<void> => {
+      const providerCalls = indexedCalls.filter((call) => call.source.startsWith(`${provider}_`));
+      await mapWithConcurrency(providerCalls, 1, async ({ source, query, index }) => {
         try {
-          return await this.searchSource(source, query);
+          outcomes[index] = await this.searchSource(source, query);
         } catch {
-          return {
+          outcomes[index] = {
             source,
             query,
             results: [],
@@ -168,8 +176,16 @@ export class ReviewSearchService {
             error: "search_call_rejected"
           };
         }
-      }
-    );
+      });
+    };
+    // Providers run in parallel, while each provider queue is serialized to
+    // avoid self-inflicted burst throttling.
+    await Promise.all([runProviderQueue("naver"), runProviderQueue("daum")]);
+    return outcomes.filter((outcome): outcome is SourceSearchOutcome => Boolean(outcome));
+  }
+
+  budgetSnapshot(): RequestBudgetSnapshot | null {
+    return this.budget?.snapshot() ?? null;
   }
 
   private searchSource(source: SearchSource, query: string): Promise<SourceSearchOutcome> {

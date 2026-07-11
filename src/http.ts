@@ -2,7 +2,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { Request, Response } from "express";
 import { config } from "./config.js";
-import { configFromAuthorization } from "./auth/playMcpConfigToken.js";
+import { resolveHttpAuthorization } from "./auth/playMcpConfigToken.js";
 import { createMcpServer } from "./mcp/server.js";
 import { runtimeStatus } from "./runtimeStatus.js";
 import { logger } from "./utils/logger.js";
@@ -16,26 +16,27 @@ const allowedHosts = process.env.MCP_ALLOWED_HOSTS
 
 const app = createMcpExpressApp({ host, allowedHosts });
 
+function publicHealthStatus(): Record<string, unknown> {
+  const status = runtimeStatus(config);
+  return {
+    service: status.service,
+    status: status.status,
+    build: status.build
+  };
+}
+
 app.get("/", (_req: Request, res: Response) => {
   res.status(200).json({
     name: "WheelMate Review Search MCP",
     status: "ok",
     mcp_endpoint: "/mcp",
-    runtime: runtimeStatus(config)
+    build: publicHealthStatus().build
   });
 });
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json(runtimeStatus(config));
+  res.status(200).json(publicHealthStatus());
 });
-
-function hasRequiredToolCredentials(requestConfig: typeof config): boolean {
-  return Boolean(
-    requestConfig.kakaoRestApiKey?.trim() &&
-      requestConfig.naverClientId?.trim() &&
-      requestConfig.naverClientSecret?.trim()
-  );
-}
 
 function jsonRpcId(body: unknown): unknown {
   if (body && typeof body === "object" && "id" in body) return (body as { id?: unknown }).id ?? null;
@@ -50,19 +51,20 @@ function isCredentialProtectedToolCall(body: unknown): boolean {
 }
 
 app.post("/mcp", async (req: Request, res: Response) => {
-  const requestConfig = configFromAuthorization(config, req.header("authorization"));
-  if (isCredentialProtectedToolCall(req.body) && !hasRequiredToolCredentials(requestConfig)) {
+  const authorization = resolveHttpAuthorization(config, req.header("authorization"));
+  if (isCredentialProtectedToolCall(req.body) && !authorization.authorized) {
     res.status(401).json({
       jsonrpc: "2.0",
       error: {
         code: -32001,
-        message: "Authorization token with WheelMate API credentials is required."
+        message: "A valid WheelMate Bearer token is required for tool calls."
       },
       id: jsonRpcId(req.body)
     });
     return;
   }
 
+  const requestConfig = authorization.config;
   const server = createMcpServer(requestConfig);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined

@@ -27,6 +27,8 @@ npm run start
 npm run start:http
 npm run ingest
 npm run token:playmcp
+npm run qa:live
+npm run smoke:submission
 npm test
 ```
 
@@ -41,6 +43,7 @@ Copy `.env.example` and fill only local secrets in `.env`. Do not commit `.env`.
 
 Required/optional variables:
 
+- `MCP_ACCESS_TOKEN` (recommended for HTTP deployments; use a high-entropy secret)
 - `KAKAO_REST_API_KEY`
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
@@ -58,16 +61,42 @@ Required/optional variables:
 - `USE_DAUM_WEB=true|false`
 - `DEFAULT_RADIUS_M=1000`
 - `DEFAULT_LIMIT=5`
-- `MAX_PLACE_CANDIDATES=5`
+- `MAX_PLACE_CANDIDATES=15`
 - `MAX_REVIEW_SEARCH_CALLS=60`
+- `MAX_EXTERNAL_API_CALLS_PER_REQUEST=40` hard cap including retries
 - `SEARCH_RESULTS_PER_QUERY=3`
 - `SEARCH_TIMEOUT_MS=3500`
 - `PORT=8080`
 - `HOST=0.0.0.0`
-- `MCP_ALLOWED_HOSTS=` optional comma-separated host allow-list for deployment
+- `MCP_ALLOWED_HOSTS=` comma-separated host allow-list; required for public deployment
 - `DB_PATH=./data/accessibility.db`
 
-If Naver or Kakao keys are missing, the server returns source-unavailable metadata instead of crashing.
+Provider failures and missing provider keys are returned as source-unavailable metadata instead of crashing.
+HTTP tool calls still require either a valid shared `MCP_ACCESS_TOKEN` or the credential-bundle fallback described below.
+
+Before requesting PlayMCP review, run `pnpm run smoke:submission` with the same
+provider credentials used by the deployment. It executes the three submitted
+conversation examples plus the reviewer-style `서울 전체` variant against live
+APIs. The command now requires at least one verified recommendation for every
+case and checks that a positive venue-level signal is explicitly attributable
+to the same Kakao-validated place. An unverified fallback no longer passes this
+submission smoke test.
+
+For broader pre-review QA, run `pnpm run qa:live`. It exercises 16 live
+recommendation queries covering particles, spacing/typos, corrections,
+structured-input precedence, mobility descriptions, accessibility preferences,
+regional food terms, culture/museum terms, and sparse-evidence fallbacks. It
+also checks the direct review and public support-facility tools. The adjudicator
+fails on unsafe evidence attribution, empty result/fallback pairs, incorrectly
+labelled fallback candidates, missing fallback reasons, or request-budget
+overflow. To rerun only selected recommendation cases while debugging:
+
+```bash
+QA_CASE=regional-food-content,culture-and-step-avoidance pnpm run qa:live
+```
+
+This is a live external-API suite and consumes provider quota; keep the normal
+unit suite (`pnpm run check`) as the fast offline gate.
 
 ## MCP Tools
 
@@ -99,13 +128,23 @@ https://your-deployed-domain.example/mcp
 
 Do not register the PlayMCP detail page URL as the endpoint. PlayMCP needs the actual remote MCP server endpoint.
 
-If the deployment platform cannot inject runtime environment variables, use PlayMCP `Key/token` authentication and generate a token from your local `.env`:
+For the recommended deployment, inject the provider API keys and a random
+`MCP_ACCESS_TOKEN` into the server, then configure the same access token in
+PlayMCP `Key/token` authentication. Requests without a valid token cannot use
+the server's shared API quota.
+
+If the deployment platform cannot inject provider environment variables, use
+the credential-bundle fallback and generate it from your local `.env`:
 
 ```bash
 pnpm run token:playmcp
 ```
 
-Treat the generated value as a secret. In PlayMCP server registration, choose `Key/token authentication` and paste the generated value as the token. The HTTP server reads that bearer token per request and uses it as request-scoped Kakao/Naver API configuration. Do not paste this token into GitHub, README files, issue comments, or chat logs.
+Treat the generated value as a secret. It is base64-encoded, not encrypted, and
+contains the Kakao/Naver credentials. In PlayMCP server registration, choose
+`Key/token authentication` and paste it as the token. The HTTP server uses it as
+request-scoped API configuration. Never paste it into GitHub, README files,
+issue comments, logs, or chat messages.
 
 Docker build:
 
@@ -128,10 +167,25 @@ If the package is private, enter a GitHub username and a token with package read
 
 Finds nearby candidates with Kakao Local, searches review/web snippets, extracts accessibility signals, and returns ranked recommendations.
 
-The recommendation flow uses two candidate paths:
+The recommendation flow is place-first and evidence-second:
 
-- broad review discovery: searches queries like `사당역 카페 휠체어`, extracts likely place names from search-result titles/snippets, then verifies those places with Kakao Local
-- local candidate verification: gets nearby places from Kakao Local first, then searches each place for accessibility signals
+1. normalize natural-language intent into location scope, category, radius, and content preferences
+2. build a deduplicated Kakao Local pool using category pages, regional keywords, and content keywords
+3. search two independent providers and both blog/web surfaces with balanced query variants
+4. map positive search evidence to known places; a search result cannot become a recommendation from area/category coincidence or a brand/neighborhood alias alone
+5. allow a new web-discovered place only after Kakao validation, regional/radius validation, full-name matching, and venue-signal proximity validation
+6. search the top candidates by exact place name and rank only attributable venue-level evidence
+
+Inferred food/place terms are soft ranking hints so minor query wording does not
+empty the pool. Concrete terms supplied in `preferences` are enforced as hard
+filters. Region phrases such as `서울 전체`, `서울 전역`, and `서울 전 지역`
+resolve to an administrative region instead of being geocoded as arbitrary
+business names.
+
+The request budget counts actual HTTP attempts, including retries. Logical
+search calls reserve capacity for transient retries, and the search planner
+covers two query wordings/providers plus a web surface before lower-priority
+variants.
 
 Broad discovery is intentionally limited to API-provided search result metadata. It does not crawl full blog/cafe bodies.
 
@@ -157,7 +211,9 @@ Output includes:
 - `not_recommended_places`
 - `unverified_candidates`
 - `fallback_used`
-- `message_for_user`
+- `answer_markdown`
+- `candidate_pipeline` (candidate counts, broad queries, lookup terms, and discovered places)
+- `request_budget` (actual attempts used by local, broad-evidence, and candidate-review stages)
 
 ### `search_place_accessibility_reviews`
 
@@ -231,8 +287,8 @@ Supported import filenames:
 - `bf_koddi.csv`: 한국장애인개발원 장애물없는생활환경인증 정보
 - `disability_facilities_standard.csv`: 전국장애인편의시설표준데이터
 - `social_security_disability_facilities.csv`: 한국사회보장정보원 장애인편의시설 현황
-- `public_restrooms.csv`: 전국공중화장실표준데이터
-- `wheelchair_chargers.csv`: 전국전동휠체어급속충전기표준데이터
+- `public_restrooms.csv`: [전국공중화장실표준데이터](https://www.data.go.kr/data/15012892/standard.do); only rows with at least one wheelchair-accessible fixture are imported
+- `wheelchair_chargers.csv`: [전국전동휠체어급속충전기표준데이터](https://www.data.go.kr/data/15034533/standard.do); zero-capacity rows are excluded
 - `culture_barrier_free.csv`: 장애인/베리어프리 문화생활 정보
 - `gyeonggi_shared_disability_facilities.csv`: 경기도 경기공유 장애인시설
 - `kto_barrier_free_travel.csv`: 한국관광공사 무장애 여행 정보
@@ -248,7 +304,7 @@ The recommendation tool then matches public evidence by coordinates, name, and a
 
 ## Review Signal Grades
 
-- `R1`: strong positive review signal, or positive signals from multiple results/sources, with no strong negative.
+- `R1`: current-enough strong positive review signal, or positive signals from multiple results/sources, with no strong negative.
 - `R2`: weak positive signal such as stroller proxy, wide entrance, or elevator mention.
 - `R3`: accessibility-related mention exists but is unclear.
 - `R4`: no useful accessibility signal.
@@ -277,11 +333,16 @@ Then:
 
 `W` places are excluded from recommendations. `R4` places are excluded by default and returned as unverified candidates unless the user asks to show candidates even without evidence.
 
+A positive result with a known publication date older than five years cannot by
+itself produce a recommendation. Results with no date remain usable but are
+reported with the normal freshness caution.
+
 ## Limitations
 
 - Search results are based on title/snippet fields, not full blog or cafe body text.
 - Private or member-only cafe/blog posts are not accessible.
 - Search results may reflect subjective or outdated experiences.
+- Name matching and signal-proximity checks reduce, but cannot mathematically eliminate, search-snippet attribution errors.
 - Store layout, threshold height, interior aisle width, crowding, and current operating status are not verified.
 - BF certification is building/facility-level evidence and does not prove every seat or entrance is wheelchair-friendly.
 - This server does not compute wheelchair-optimized routes. Kakao Map links are simple map/route links.

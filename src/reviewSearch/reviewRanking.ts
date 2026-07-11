@@ -34,6 +34,7 @@ function hasRecommendationReviewEvidence(item: RankedPlace): boolean {
   return item.review.results.some((evidence) =>
     evidence.signals.some((signal) =>
       signal.polarity === "positive" &&
+      (!signal.subject || signal.subject === "venue") &&
       !["basement_or_floor", "stroller_proxy", "unknown"].includes(signal.type)
     )
   );

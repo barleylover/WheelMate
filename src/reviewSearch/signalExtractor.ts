@@ -1,4 +1,4 @@
-import type { NormalizedSearchResult, ReviewSignal, SignalPolarity, SignalStrength, SignalType } from "../types.js";
+import type { NormalizedSearchResult, ReviewSignal, SignalPolarity, SignalStrength, SignalSubject, SignalType } from "../types.js";
 import { sanitizeHtmlText } from "./htmlSanitizer.js";
 
 interface PatternSpec {
@@ -6,12 +6,13 @@ interface PatternSpec {
   polarity: SignalPolarity;
   strength: SignalStrength;
   type: SignalType;
+  subject?: SignalSubject;
 }
 
 const STRONG_POSITIVE: PatternSpec[] = [
-  { pattern: /(?:전동)?휠체어.{0,12}(?:출입|입장|진입|접근|이용)(?:이|가)?\s*(?:가능|괜찮|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
-  { pattern: /(?:전동)?휠체어\s*(?:도|가|로|를|은|는)?\s*(?:사용|진입|접근|출입|입장|이용)(?:도|이|가)?\s*(?:가능|가능한|가능해|가능합니다)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
-  { pattern: /(?:전동)?휠체어\s*(?:이용|사용)(?:이|가)?\s*(?:가능|가능해|가능한|O|○|있음)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어.{0,12}(?:출입|입장|진입|접근|이용|방문)\s*(?:이|가)?\s*(?:가능|괜찮|(?<!불)편함|(?<!불)편해)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어\s*(?:도|가|로|를|은|는)?\s*(?:사용|진입|접근|출입|입장|이용|방문)\s*(?:도|이|가)?\s*(?:가능|가능한|가능해|가능합니다)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:전동)?휠체어\s*(?:이용|사용)\s*(?:이|가)?\s*(?:가능|가능해|가능한|O|○|있음)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,14}(?:들어갈 수|갈 수|이용할 수|탈 수)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,18}(?:손님|고객|이용객).{0,20}(?:매장\s*)?이용\s*(?:잘|가능|편)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,20}(?:오기|방문|이동|접근|입장).{0,10}(?:(?<!불)편한|(?<!불)편해|(?<!불)편함|(?<!불)편하게|무리\s*없이)/g, polarity: "positive", strength: "strong", type: "wheelchair_direct" },
@@ -21,7 +22,6 @@ const STRONG_POSITIVE: PatternSpec[] = [
   { pattern: /(?:계단|스텝)(?:이|가)?\s*(?:없음|없고|없이|없는)/g, polarity: "positive", strength: "strong", type: "stairs" },
   { pattern: /(?:경사로|슬로프)(?:가|는)?\s*(?:있음|있는|있어서|있어|설치|구비)/g, polarity: "positive", strength: "strong", type: "ramp" },
   { pattern: /(?:장애인|다목적|무장애)\s*화장실(?:이|가)?\s*(?:있음|있는|있어서|가능|구비)/g, polarity: "positive", strength: "strong", type: "restroom" },
-  { pattern: /화장실.{0,12}(?:휠체어|장애인).{0,8}(?:가능|이용)/g, polarity: "positive", strength: "strong", type: "restroom" },
   { pattern: /장애인\s*주차\s*(?:가능|있음|있는)/g, polarity: "positive", strength: "strong", type: "unknown" },
   { pattern: /(?:엘리베이터|엘베|승강기)(?:가|는)?\s*(?:있음|있는|있어서|있어|가능|이용)/g, polarity: "positive", strength: "medium", type: "elevator" }
 ];
@@ -34,6 +34,8 @@ const WEAK_POSITIVE: PatternSpec[] = [
 ];
 
 const STRONG_NEGATIVE: PatternSpec[] = [
+  { pattern: /(?:전동)?휠체어.{0,18}(?:가능|이용\s*가능|접근\s*가능|출입\s*가능).{0,8}(?:하지\s*않|하지\s*못|아님|아니|않음)/g, polarity: "negative", strength: "strong", type: "wheelchair_direct" },
+  { pattern: /(?:무장애|배리어프리|베리어프리|barrier\s*free).{0,10}(?:아님|아닌|아닙|아니|않음|않다|미지원|불가)/gi, polarity: "negative", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:전동)?휠체어.{0,12}(?:불가|어렵|힘들|무리(?!\s*없이)|못\s*들어)/g, polarity: "negative", strength: "strong", type: "wheelchair_direct" },
   { pattern: /(?:엘리베이터|엘베|승강기)(?:가|는)?\s*(?:없음|없는|없어서|없어)/g, polarity: "negative", strength: "strong", type: "elevator" },
   { pattern: /계단(?:만|으로만)\s*(?:있음|이용)|계단.{0,8}(?:올라가야|올라가|이용해야)/g, polarity: "negative", strength: "strong", type: "stairs" },
@@ -43,7 +45,14 @@ const STRONG_NEGATIVE: PatternSpec[] = [
   { pattern: /화장실(?:이|은)?\s*(?:좁음|좁고|좁아|좁은|계단|2층|지하)/g, polarity: "negative", strength: "strong", type: "restroom" }
 ];
 
+function positiveMatchIsNegated(text: string, index: number, matchedText: string): boolean {
+  const context = text.slice(index, Math.min(text.length, index + matchedText.length + 16));
+  return /가능\s*(?:하지\s*않|하지\s*못|한\s*것은\s*아니|아님|아니|않음|않다)/i.test(context) ||
+    /(?:무장애|배리어프리|베리어프리|barrier\s*free).{0,10}(?:아님|아닌|아닙|아니|않음|않다|미지원)/i.test(context);
+}
+
 const CAUTION: PatternSpec[] = [
+  { pattern: /(?:전동)?휠체어.{0,16}(?:지하철|전철|역사|승강장|대중교통).{0,16}(?:접근|이용|이동).{0,8}(?:가능|편리|용이)?/g, polarity: "ambiguous", strength: "weak", type: "unknown", subject: "transit" },
   { pattern: /계단/g, polarity: "ambiguous", strength: "weak", type: "stairs" },
   { pattern: /지하|반지하/g, polarity: "ambiguous", strength: "weak", type: "basement_or_floor" },
   { pattern: /(?:^|\s)1층(?=\s|$|[,.에은이가의])/g, polarity: "ambiguous", strength: "weak", type: "basement_or_floor" },
@@ -59,10 +68,31 @@ function collectMatches(text: string, specs: PatternSpec[]): ReviewSignal[] {
     for (const match of text.matchAll(spec.pattern)) {
       const index = match.index ?? 0;
       const context = text.slice(Math.max(0, index - 18), Math.min(text.length, index + match[0].length + 80));
+      const subjectContext = text.slice(Math.max(0, index - 28), Math.min(text.length, index + match[0].length + 28));
+      const transitInMatch = /(?:지하철|전철|역사|승강장|대중교통)/.test(match[0]);
+      const transitNearby = transitInMatch || /(?:지하철|전철|역사|승강장|대중교통)/.test(subjectContext);
+      const explicitVenueEntry = !transitInMatch && /(?:출입|입장|진입)/.test(match[0]);
+      const venueNearby = /(?:매장|가게|식당|음식점|카페|출입구|입구|실내|내부|1층|주\s*출입)/.test(subjectContext);
+      const subject: SignalSubject = spec.subject ??
+        (transitInMatch || (transitNearby && !explicitVenueEntry && !venueNearby)
+          ? "transit"
+          : spec.type === "restroom" && /(?:주변|근처|인근)/.test(subjectContext)
+            ? "support_facility"
+            : "venue");
+      if (spec.polarity === "positive" && positiveMatchIsNegated(text, index, match[0])) {
+        continue;
+      }
+      if (
+        spec.polarity === "positive" &&
+        spec.type === "wheelchair_direct" &&
+        subject === "transit"
+      ) {
+        continue;
+      }
       if (
         spec.polarity === "negative" &&
         spec.type === "wheelchair_direct" &&
-        /휠체어.{0,14}(?:가능|이용)/.test(match[0])
+        /휠체어.{0,12}(?:이용|출입|접근|진입)?\s*가능(?!\s*(?:하지|하지\s*않|아님|아니))/.test(match[0])
       ) {
         continue;
       }
@@ -78,7 +108,9 @@ function collectMatches(text: string, specs: PatternSpec[]): ReviewSignal[] {
         polarity: spec.polarity,
         type: spec.type,
         matched_text: match[0],
-        strength: spec.strength
+        strength: spec.strength,
+        subject,
+        context_text: context.replace(/\s+/g, " ").trim()
       });
     }
   }
@@ -108,19 +140,31 @@ export function extractSignalsFromText(rawText: string): ReviewSignal[] {
     ...collectMatches(text, CAUTION)
   ];
 
+  const withoutRedundantCautions = signals.filter((signal) => {
+    if (signal.polarity !== "ambiguous") return true;
+    return !signals.some(
+      (other) =>
+        other !== signal &&
+        other.polarity !== "ambiguous" &&
+        other.type === signal.type &&
+        other.matched_text.includes(signal.matched_text)
+    );
+  });
+
   if (isStationElevatorContext(text)) {
     return dedupeSignals([
-      ...signals.filter((signal) => signal.type !== "elevator" || signal.polarity !== "positive"),
+      ...withoutRedundantCautions.filter((signal) => signal.type !== "elevator" || signal.polarity !== "positive"),
       {
         polarity: "ambiguous",
         type: "elevator",
         matched_text: "지하철역 엘리베이터",
-        strength: "weak"
+        strength: "weak",
+        subject: "transit"
       }
     ]);
   }
 
-  return dedupeSignals(signals);
+  return dedupeSignals(withoutRedundantCautions);
 }
 
 export function extractSignals(result: Pick<NormalizedSearchResult, "title" | "snippet">): ReviewSignal[] {

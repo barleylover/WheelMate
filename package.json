@@ -13,7 +13,10 @@
     "start:http": "node dist/http.js",
     "ingest": "tsx src/data/ingest.ts",
     "token:playmcp": "tsx src/scripts/generatePlayMcpToken.ts",
-    "test": "vitest run"
+    "qa:live": "tsx src/scripts/qaLiveQueryMatrix.ts",
+    "smoke:submission": "tsx src/scripts/smokeSubmissionExamples.ts",
+    "test": "vitest run",
+    "check": "pnpm run build && pnpm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

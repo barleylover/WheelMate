@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { AppConfig } from "../config.js";
 
 const TOKEN_PREFIX = "wm1.";
@@ -9,6 +10,12 @@ interface PlayMcpConfigTokenPayload {
   PUBLIC_DATA_SERVICE_KEY?: string;
   KTO_SERVICE_KEY?: string;
   CULTURE_BIGDATA_API_KEY?: string;
+}
+
+export interface HttpAuthorizationResolution {
+  authorized: boolean;
+  mode: "shared_token" | "credential_bundle" | "none";
+  config: AppConfig;
 }
 
 function extractToken(value: string | undefined): string | undefined {
@@ -42,6 +49,33 @@ function decodePayload(token: string): PlayMcpConfigTokenPayload | null {
   }
 }
 
+function completeCredentialBundle(payload: PlayMcpConfigTokenPayload | null): payload is PlayMcpConfigTokenPayload {
+  return Boolean(
+    payload?.KAKAO_REST_API_KEY?.trim() &&
+      payload.NAVER_CLIENT_ID?.trim() &&
+      payload.NAVER_CLIENT_SECRET?.trim()
+  );
+}
+
+function safeTokenEqual(actual: string | undefined, expected: string | undefined): boolean {
+  if (!actual || !expected) return false;
+  const actualBuffer = Buffer.from(actual, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function mergePayload(baseConfig: AppConfig, payload: PlayMcpConfigTokenPayload): AppConfig {
+  return {
+    ...baseConfig,
+    kakaoRestApiKey: payload.KAKAO_REST_API_KEY || baseConfig.kakaoRestApiKey,
+    naverClientId: payload.NAVER_CLIENT_ID || baseConfig.naverClientId,
+    naverClientSecret: payload.NAVER_CLIENT_SECRET || baseConfig.naverClientSecret,
+    publicDataServiceKey: payload.PUBLIC_DATA_SERVICE_KEY || baseConfig.publicDataServiceKey,
+    ktoServiceKey: payload.KTO_SERVICE_KEY || baseConfig.ktoServiceKey,
+    cultureBigdataApiKey: payload.CULTURE_BIGDATA_API_KEY || baseConfig.cultureBigdataApiKey
+  };
+}
+
 export function createPlayMcpConfigToken(env: NodeJS.ProcessEnv = process.env): string {
   const payload: PlayMcpConfigTokenPayload = {
     KAKAO_REST_API_KEY: env.KAKAO_REST_API_KEY?.trim(),
@@ -69,13 +103,26 @@ export function configFromAuthorization(baseConfig: AppConfig, authorizationHead
   const token = extractToken(authorizationHeader);
   const payload = token ? decodePayload(token) : null;
   if (!payload) return baseConfig;
-  return {
-    ...baseConfig,
-    kakaoRestApiKey: payload.KAKAO_REST_API_KEY || baseConfig.kakaoRestApiKey,
-    naverClientId: payload.NAVER_CLIENT_ID || baseConfig.naverClientId,
-    naverClientSecret: payload.NAVER_CLIENT_SECRET || baseConfig.naverClientSecret,
-    publicDataServiceKey: payload.PUBLIC_DATA_SERVICE_KEY || baseConfig.publicDataServiceKey,
-    ktoServiceKey: payload.KTO_SERVICE_KEY || baseConfig.ktoServiceKey,
-    cultureBigdataApiKey: payload.CULTURE_BIGDATA_API_KEY || baseConfig.cultureBigdataApiKey
-  };
+  return mergePayload(baseConfig, payload);
+}
+
+export function resolveHttpAuthorization(
+  baseConfig: AppConfig,
+  authorizationHeader: string | undefined
+): HttpAuthorizationResolution {
+  const token = extractToken(authorizationHeader);
+  if (safeTokenEqual(token, baseConfig.mcpAccessToken)) {
+    return { authorized: true, mode: "shared_token", config: baseConfig };
+  }
+
+  const payload = token ? decodePayload(token) : null;
+  if (completeCredentialBundle(payload)) {
+    return {
+      authorized: true,
+      mode: "credential_bundle",
+      config: mergePayload(baseConfig, payload)
+    };
+  }
+
+  return { authorized: false, mode: "none", config: baseConfig };
 }

@@ -61,6 +61,23 @@ function sameOrNestedName(placeName: string, evidenceName: string | null): boole
   return Boolean(place && evidence && (place.includes(evidence) || evidence.includes(place)));
 }
 
+function coordinateBounds(origin: Coordinates, radiusM: number): {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+} {
+  const latDelta = radiusM / 111_320;
+  const longitudeScale = Math.max(0.1, Math.cos((origin.lat * Math.PI) / 180));
+  const lngDelta = radiusM / (111_320 * longitudeScale);
+  return {
+    minLat: origin.lat - latDelta,
+    maxLat: origin.lat + latDelta,
+    minLng: origin.lng - lngDelta,
+    maxLng: origin.lng + lngDelta
+  };
+}
+
 function toPublicSupportEvidence(
   row: PublicAccessibilityEvidenceRow,
   distanceM?: number
@@ -112,11 +129,17 @@ export class PublicDataClient {
     if (!fs.existsSync(this.config.dbPath)) return [];
     const db = new DatabaseSync(this.config.dbPath, { readOnly: true });
     try {
-      const typeClause = type === "all" ? "" : "WHERE type = ?";
+      const bounds = coordinateBounds(origin, radiusM);
+      const typeClause = type === "all" ? "" : "type = ? AND";
       const stmt = db.prepare(
-        `SELECT type, name, address, lat, lng, opening_hours, phone, source FROM support_facilities ${typeClause}`
+        `SELECT type, name, address, lat, lng, opening_hours, phone, source
+           FROM support_facilities
+          WHERE ${typeClause} lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?`
       );
-      const rows = (type === "all" ? stmt.all() : stmt.all(type)) as unknown as SupportFacilityRow[];
+      const boundsParams = [bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng];
+      const rows = (
+        type === "all" ? stmt.all(...boundsParams) : stmt.all(type, ...boundsParams)
+      ) as unknown as SupportFacilityRow[];
       const coordinateFacilities = rows
         .map((row) => ({
           type: row.type,
@@ -127,13 +150,14 @@ export class PublicDataClient {
           opening_hours: row.opening_hours ?? undefined,
           phone: row.phone ?? undefined,
           source: row.source,
+          match_basis: "coordinates" as const,
           distance_m: distanceMeters(origin, { lat: Number(row.lat), lng: Number(row.lng) })
         }))
         .filter((facility) => facility.distance_m !== undefined && facility.distance_m <= radiusM)
         .sort((a, b) => (a.distance_m ?? 0) - (b.distance_m ?? 0))
         .slice(0, limit);
       const addressFacilities = this.findAddressMatchedSupportFacilities(db, originAddress, type, limit);
-      return dedupeSupportFacilities([...coordinateFacilities, ...addressFacilities]);
+      return dedupeSupportFacilities([...coordinateFacilities, ...addressFacilities]).slice(0, limit);
     } catch {
       return [];
     } finally {
@@ -168,7 +192,10 @@ export class PublicDataClient {
         row,
         score: addressAreaScore(originAddress, row.address)
       }))
-      .filter((item) => item.score >= 65)
+      // Address-only rows have no coordinates, so district/road equality by
+      // itself is too broad for a "nearby" claim. Require either an exact or
+      // numerically close road address (or equivalently strong area tokens).
+      .filter((item) => item.score >= 80)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map(({ row }) => ({
@@ -177,7 +204,8 @@ export class PublicDataClient {
         address: row.address,
         opening_hours: row.opening_hours ?? undefined,
         phone: row.phone ?? undefined,
-        source: row.source
+        source: row.source,
+        match_basis: "address_area" as const
       }));
   }
 

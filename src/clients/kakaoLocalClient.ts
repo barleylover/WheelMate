@@ -3,7 +3,9 @@ import { categoryKeyword, kakaoCategoryCode } from "../core/categoryMapper.js";
 import { distanceMeters } from "../core/distance.js";
 import { fallbackOrigin } from "../core/geocode.js";
 import type { Category, Origin, PlaceCandidate } from "../types.js";
+import type { RequestBudget } from "../utils/requestBudget.js";
 import { fetchJson, safeErrorMessage } from "../utils/retry.js";
+import { administrativeCenterQuery } from "../search/locationScope.js";
 
 interface KakaoPlaceDocument {
   id?: string;
@@ -30,7 +32,10 @@ interface KakaoSearchResponse<T> {
 export class KakaoLocalClient {
   private readonly baseUrl = "https://dapi.kakao.com";
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    private readonly budget?: RequestBudget
+  ) {}
 
   hasCredentials(): boolean {
     return Boolean(this.config.kakaoRestApiKey);
@@ -41,7 +46,7 @@ export class KakaoLocalClient {
       return fallbackOrigin(location);
     }
     try {
-      const keyword = await this.keywordSearchRaw(location, undefined, undefined, undefined, 1);
+      const keyword = await this.keywordSearchRaw(administrativeCenterQuery(location), undefined, undefined, undefined, 1);
       const keywordDoc = keyword[0];
       if (keywordDoc?.y && keywordDoc.x) {
         return {
@@ -53,7 +58,8 @@ export class KakaoLocalClient {
         };
       }
     } catch {
-      return fallbackOrigin(location);
+      // Address search below is an independent fallback for keyword-search
+      // errors as well as empty keyword results.
     }
 
     const address = await this.addressSearch(location);
@@ -69,7 +75,8 @@ export class KakaoLocalClient {
       const response = await fetchJson<KakaoSearchResponse<KakaoAddressDocument>>(
         url.toString(),
         { headers: { Authorization: `KakaoAK ${this.config.kakaoRestApiKey}` } },
-        this.config.searchTimeoutMs
+        this.config.searchTimeoutMs,
+        this.budget
       );
       const doc = response.documents?.[0];
       if (!doc?.x || !doc.y) return null;
@@ -92,10 +99,37 @@ export class KakaoLocalClient {
     radius?: number,
     size = this.config.maxPlaceCandidates
   ): Promise<PlaceCandidate[]> {
+    return this.keywordSearchPage(query, { x, y, radius, size });
+  }
+
+  async keywordSearchPage(
+    query: string,
+    options: {
+      x?: number;
+      y?: number;
+      radius?: number;
+      size?: number;
+      page?: number;
+      sort?: "accuracy" | "distance";
+      categoryGroupCode?: string;
+    } = {}
+  ): Promise<PlaceCandidate[]> {
     try {
-      const docs = await this.keywordSearchRaw(query, x, y, radius, size);
+      const docs = await this.keywordSearchRaw(
+        query,
+        options.x,
+        options.y,
+        options.radius,
+        options.size ?? this.config.maxPlaceCandidates,
+        options.page,
+        options.sort,
+        options.categoryGroupCode
+      );
       return docs.map((doc) =>
-        this.toPlaceCandidate(doc, x !== undefined && y !== undefined ? { lat: y, lng: x } : undefined)
+        this.toPlaceCandidate(
+          doc,
+          options.x !== undefined && options.y !== undefined ? { lat: options.y, lng: options.x } : undefined
+        )
       );
     } catch {
       return [];
@@ -127,7 +161,8 @@ export class KakaoLocalClient {
     x: number,
     y: number,
     radius: number,
-    size = this.config.maxPlaceCandidates
+    size = this.config.maxPlaceCandidates,
+    page = 1
   ): Promise<PlaceCandidate[]> {
     if (!this.hasCredentials()) return [];
     const url = new URL("/v2/local/search/category.json", this.baseUrl);
@@ -136,11 +171,14 @@ export class KakaoLocalClient {
     url.searchParams.set("y", String(y));
     url.searchParams.set("radius", String(radius));
     url.searchParams.set("size", String(size));
+    url.searchParams.set("page", String(Math.min(45, Math.max(1, page))));
+    url.searchParams.set("sort", "distance");
     try {
       const response = await fetchJson<KakaoSearchResponse<KakaoPlaceDocument>>(
         url.toString(),
         { headers: { Authorization: `KakaoAK ${this.config.kakaoRestApiKey}` } },
-        this.config.searchTimeoutMs
+        this.config.searchTimeoutMs,
+        this.budget
       );
       return (response.documents ?? []).map((doc) => this.toPlaceCandidate(doc, { lat: y, lng: x }));
     } catch (error) {
@@ -153,12 +191,18 @@ export class KakaoLocalClient {
     x?: number,
     y?: number,
     radius?: number,
-    size = this.config.maxPlaceCandidates
+    size = this.config.maxPlaceCandidates,
+    page = 1,
+    sort?: "accuracy" | "distance",
+    categoryGroupCode?: string
   ): Promise<KakaoPlaceDocument[]> {
     if (!this.hasCredentials()) return [];
     const url = new URL("/v2/local/search/keyword.json", this.baseUrl);
     url.searchParams.set("query", query);
-    url.searchParams.set("size", String(size));
+    url.searchParams.set("size", String(Math.min(15, Math.max(1, size))));
+    url.searchParams.set("page", String(Math.min(45, Math.max(1, page))));
+    if (sort) url.searchParams.set("sort", sort);
+    if (categoryGroupCode) url.searchParams.set("category_group_code", categoryGroupCode);
     if (x !== undefined && y !== undefined) {
       url.searchParams.set("x", String(x));
       url.searchParams.set("y", String(y));
@@ -170,7 +214,8 @@ export class KakaoLocalClient {
       const response = await fetchJson<KakaoSearchResponse<KakaoPlaceDocument>>(
         url.toString(),
         { headers: { Authorization: `KakaoAK ${this.config.kakaoRestApiKey}` } },
-        this.config.searchTimeoutMs
+        this.config.searchTimeoutMs,
+        this.budget
       );
       return response.documents ?? [];
     } catch (error) {

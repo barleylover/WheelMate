@@ -7,6 +7,23 @@ import {
 } from "../src/mcp/tools/recommendAccessiblePlacesByReviewSearch.js";
 
 describe("contentSearchPreferences", () => {
+  it("clamps abusive radius, limit, and preference inputs", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        location: "강남역",
+        category: "cafe",
+        radius_m: -100,
+        limit: 999,
+        preferences: Array.from({ length: 20 }, (_, index) => `조건${index}`)
+      },
+      { defaultRadiusM: 1000, defaultLimit: 5 }
+    );
+
+    expect(intent.radiusM).toBe(50);
+    expect(intent.limit).toBe(5);
+    expect(intent.unsupportedPreferences).toHaveLength(8);
+  });
+
   it("drops wheelchair accessibility words from concrete content filters", () => {
     expect(contentSearchPreferences(["햄버거", "휠체어"])).toEqual(["햄버거", "버거"]);
   });
@@ -162,6 +179,88 @@ describe("contentSearchPreferences", () => {
       expect(intent.category).toBe(item.category);
       expect(intent.contentPreferences).toEqual([]);
       expect(intent.searchPreferences).toEqual([]);
+    }
+  });
+
+  it("does not turn the original neighborhood into a content filter when the caller broadens location", () => {
+    const intent = resolveRecommendSearchIntent(
+      {
+        query: "잠실역 근처 휠체어 접근성 좋은 카페 찾아줘",
+        location: "서울",
+        category: "cafe",
+        radius_m: 800
+      },
+      { defaultRadiusM: 800, defaultLimit: 5 }
+    );
+
+    expect(intent.location).toBe("서울");
+    expect(intent.radiusM).toBe(20_000);
+    expect(intent.contentPreferences).toEqual([]);
+    expect(intent.searchPreferences).toEqual([]);
+  });
+
+  it("treats whole-region wording as search scope instead of a fake content preference", () => {
+    for (const query of [
+      "서울 전체에서 휠체어 접근성 좋은 카페 찾아줘",
+      "서울 전역 휠체어 접근 가능한 카페 추천해줘",
+      "서울 전 지역의 휠체어 이용 가능한 카페"
+    ]) {
+      const intent = resolveRecommendSearchIntent(
+        { query },
+        { defaultRadiusM: 800, defaultLimit: 5 }
+      );
+
+      expect(intent.location).toBe("서울");
+      expect(intent.category).toBe("cafe");
+      expect(intent.radiusM).toBe(20_000);
+      expect(intent.contentPreferences).toEqual([]);
+    }
+  });
+
+  it("normalizes whole-region wording supplied directly in the structured location field", () => {
+    for (const location of ["서울 전체", "서울 전역", "서울 전 지역", "서울시 전체"]) {
+      const intent = resolveRecommendSearchIntent(
+        { location, category: "cafe", radius_m: 800 },
+        { defaultRadiusM: 800, defaultLimit: 5 }
+      );
+
+      expect(intent.location).toBe(location === "서울시 전체" ? "서울시" : "서울");
+      expect(intent.category).toBe("cafe");
+      expect(intent.radiusM).toBe(20_000);
+      expect(intent.contentPreferences).toEqual([]);
+    }
+  });
+
+  it("parses all three submitted conversation examples without contaminating intent", () => {
+    const examples = [
+      {
+        query: "잠실역 근처 휠체어 접근성 좋은 카페 찾아줘",
+        location: "잠실역",
+        category: "cafe",
+        content: []
+      },
+      {
+        query: "휠체어 타고 갈건데, 부산 서면역 근처 음식점 추천해줘",
+        location: "부산 서면역",
+        category: "restaurant",
+        content: []
+      },
+      {
+        query: "제주도 횟집 휠체어 타고 가기 편한 곳 추천해줘",
+        location: "제주도",
+        category: "restaurant",
+        content: ["횟집", "회", "생선회"]
+      }
+    ] as const;
+
+    for (const example of examples) {
+      const intent = resolveRecommendSearchIntent(
+        { query: example.query },
+        { defaultRadiusM: 800, defaultLimit: 5 }
+      );
+      expect(intent.location).toBe(example.location);
+      expect(intent.category).toBe(example.category);
+      expect(intent.contentPreferences).toEqual(example.content);
     }
   });
 

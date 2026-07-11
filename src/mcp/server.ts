@@ -8,6 +8,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { AppConfig } from "../config.js";
 import {
+  MAX_RADIUS_M,
+  MAX_RECOMMENDATION_LIMIT,
+  MAX_REVIEW_RESULT_LIMIT,
+  MIN_RADIUS_M,
+  normalizePreferenceList
+} from "../core/inputLimits.js";
+import {
   findNearbySupportFacilities,
   type FindNearbySupportFacilitiesInput
 } from "./tools/findNearbySupportFacilities.js";
@@ -36,19 +43,27 @@ const recommendTool: Tool = {
     properties: {
       query: {
         type: "string",
+        maxLength: 300,
         description:
           "사용자의 원문 질의 전체. 가능하면 항상 그대로 넣으세요. location/category/preferences가 비어 있거나 불완전할 때 서버가 보완에 사용합니다."
       },
-      location: { type: "string", description: "예: 홍대입구역, 강남역, 서울시청. query에 명확히 포함되어 있으면 생략 가능" },
+      location: { type: "string", maxLength: 100, description: "예: 홍대입구역, 강남역, 서울시청. query에 명확히 포함되어 있으면 생략 가능" },
       category: {
         type: "string",
         enum: ["cafe", "restaurant", "culture", "museum", "restroom", "charger", "any"]
       },
-      radius_m: { type: "number", default: 800 },
-      limit: { type: "number", default: 5 },
+      radius_m: {
+        type: "integer",
+        minimum: MIN_RADIUS_M,
+        maximum: MAX_RADIUS_M,
+        default: 1000,
+        description: "역·동 같은 지점형 위치의 검색 반경입니다. 서울·부산·제주도 같은 광역 위치는 서버가 최대 20km 범위로 해석합니다."
+      },
+      limit: { type: "integer", minimum: 1, maximum: MAX_RECOMMENDATION_LIMIT, default: 5 },
       preferences: {
         type: "array",
-        items: { type: "string" },
+        maxItems: 8,
+        items: { type: "string", maxLength: 40 },
         description:
           "사용자가 명시한 구체적인 조건만 넣으세요. 접근성 조건 예: 장애인화장실, 충전기근처, 입구중요, 계단회피, 엘리베이터. 세부 장소/음식 조건 예: 마라탕, 라멘, 햄버거, 횟집, 초밥, 포케, 베이커리, 약국, 서점, 영화관. 일반 단어인 휠체어/접근성/좋은/추천은 넣지 마세요."
       }
@@ -91,11 +106,11 @@ const searchReviewsTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
-      place_name: { type: "string" },
-      address: { type: "string" },
-      neighborhood: { type: "string" },
-      category: { type: "string" },
-      limit: { type: "number", default: 5 }
+      place_name: { type: "string", maxLength: 120 },
+      address: { type: "string", maxLength: 200 },
+      neighborhood: { type: "string", maxLength: 100 },
+      category: { type: "string", maxLength: 50 },
+      limit: { type: "integer", minimum: 1, maximum: MAX_REVIEW_RESULT_LIMIT, default: 5 }
     },
     required: ["place_name"],
     additionalProperties: false
@@ -116,10 +131,10 @@ const supportFacilitiesTool: Tool = {
   inputSchema: {
     type: "object",
     properties: {
-      location: { type: "string" },
+      location: { type: "string", maxLength: 100 },
       type: { type: "string", enum: ["accessible_restroom", "wheelchair_charger", "all"] },
-      radius_m: { type: "number", default: 800 },
-      limit: { type: "number", default: 5 }
+      radius_m: { type: "integer", minimum: MIN_RADIUS_M, maximum: MAX_RADIUS_M, default: 800 },
+      limit: { type: "integer", minimum: 1, maximum: MAX_REVIEW_RESULT_LIMIT, default: 5 }
     },
     required: ["location", "type"],
     additionalProperties: false
@@ -171,9 +186,9 @@ function errorResult(message: string): CallToolResult {
   };
 }
 
-function readString(args: Record<string, unknown>, name: string): string | undefined {
+function readString(args: Record<string, unknown>, name: string, maxLength = 300): string | undefined {
   const value = args[name];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : undefined;
 }
 
 function readNumber(args: Record<string, unknown>, name: string): number | undefined {
@@ -183,7 +198,9 @@ function readNumber(args: Record<string, unknown>, name: string): number | undef
 
 function readStringArray(args: Record<string, unknown>, name: string): string[] | undefined {
   const value = args[name];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+  return Array.isArray(value)
+    ? normalizePreferenceList(value.filter((item): item is string => typeof item === "string"))
+    : undefined;
 }
 
 export function createMcpServer(config: AppConfig): Server {
@@ -205,8 +222,8 @@ export function createMcpServer(config: AppConfig): Server {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
       if (request.params.name === "recommend_accessible_places_by_review_search") {
-        const query = readString(args, "query");
-        const location = readString(args, "location");
+        const query = readString(args, "query", 300);
+        const location = readString(args, "location", 100);
         if (!location && !query) return errorResult("location or query is required");
         const input: RecommendAccessiblePlacesInput = {
           query,
@@ -220,20 +237,20 @@ export function createMcpServer(config: AppConfig): Server {
       }
 
       if (request.params.name === "search_place_accessibility_reviews") {
-        const placeName = readString(args, "place_name");
+        const placeName = readString(args, "place_name", 120);
         if (!placeName) return errorResult("place_name is required");
         const input: SearchPlaceAccessibilityReviewsInput = {
           place_name: placeName,
-          address: readString(args, "address"),
-          neighborhood: readString(args, "neighborhood"),
-          category: readString(args, "category"),
+          address: readString(args, "address", 200),
+          neighborhood: readString(args, "neighborhood", 100),
+          category: readString(args, "category", 50),
           limit: readNumber(args, "limit")
         };
         return jsonResult(await searchPlaceAccessibilityReviews(input, config));
       }
 
       if (request.params.name === "find_nearby_support_facilities") {
-        const location = readString(args, "location");
+        const location = readString(args, "location", 100);
         if (!location) return errorResult("location is required");
         const input: FindNearbySupportFacilitiesInput = {
           location,
