@@ -41,6 +41,9 @@ describe("runtimeStatus", () => {
     const text = JSON.stringify(status);
 
     expect(status).toMatchObject({
+      access: {
+        authentication: "none"
+      },
       build: {
         sha: "abcdef1234567890",
         short_sha: "abcdef123456",

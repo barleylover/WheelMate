@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 dotenv.config({ quiet: true });
 
 export interface AppConfig {
-  mcpAccessToken?: string;
   kakaoRestApiKey?: string;
   naverClientId?: string;
   naverClientSecret?: string;
@@ -49,7 +48,6 @@ function intEnv(name: string, fallback: number, min = 1, max = Number.MAX_SAFE_I
 
 export function loadConfig(): AppConfig {
   return {
-    mcpAccessToken: optionalEnv("MCP_ACCESS_TOKEN"),
     kakaoRestApiKey: optionalEnv("KAKAO_REST_API_KEY"),
     naverClientId: optionalEnv("NAVER_CLIENT_ID"),
     naverClientSecret: optionalEnv("NAVER_CLIENT_SECRET"),

@@ -26,7 +26,6 @@ npm run build
 npm run start
 npm run start:http
 npm run ingest
-npm run token:playmcp
 npm run qa:live
 npm run smoke:submission
 npm test
@@ -43,7 +42,6 @@ Copy `.env.example` and fill only local secrets in `.env`. Do not commit `.env`.
 
 Required/optional variables:
 
-- `MCP_ACCESS_TOKEN` (recommended for HTTP deployments; use a high-entropy secret)
 - `KAKAO_REST_API_KEY`
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
@@ -72,7 +70,12 @@ Required/optional variables:
 - `DB_PATH=./data/accessibility.db`
 
 Provider failures and missing provider keys are returned as source-unavailable metadata instead of crashing.
-HTTP tool calls still require either a valid shared `MCP_ACCESS_TOKEN` or the credential-bundle fallback described below.
+The remote MCP endpoint intentionally accepts anonymous requests so PlayMCP
+reviewers can call every tool with `인증 사용하지 않음`. Provider API keys must
+remain server-side environment variables and are never accepted from callers.
+Every recommendation request is still bounded by
+`MAX_EXTERNAL_API_CALLS_PER_REQUEST` (default: 40, including retries), but this
+is a per-request safety limit rather than a global user quota.
 
 Before requesting PlayMCP review, run `pnpm run smoke:submission` with the same
 provider credentials used by the deployment. It executes the three submitted
@@ -128,23 +131,11 @@ https://your-deployed-domain.example/mcp
 
 Do not register the PlayMCP detail page URL as the endpoint. PlayMCP needs the actual remote MCP server endpoint.
 
-For the recommended deployment, inject the provider API keys and a random
-`MCP_ACCESS_TOKEN` into the server, then configure the same access token in
-PlayMCP `Key/token` authentication. Requests without a valid token cannot use
-the server's shared API quota.
-
-If the deployment platform cannot inject provider environment variables, use
-the credential-bundle fallback and generate it from your local `.env`:
-
-```bash
-pnpm run token:playmcp
-```
-
-Treat the generated value as a secret. It is base64-encoded, not encrypted, and
-contains the Kakao/Naver credentials. In PlayMCP server registration, choose
-`Key/token authentication` and paste it as the token. The HTTP server uses it as
-request-scoped API configuration. Never paste it into GitHub, README files,
-issue comments, logs, or chat messages.
+Inject the Kakao/Naver provider credentials as server-side secrets. In the
+PlayMCP tool authentication selector choose `인증 사용하지 않음`; do not add an
+`MCP_ACCESS_TOKEN` environment variable. Anyone who knows the endpoint URL can
+invoke the tools and consume the shared provider quota, which is an intentional
+trade-off for unrestricted review access.
 
 Docker build:
 

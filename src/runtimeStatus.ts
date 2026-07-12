@@ -31,9 +31,6 @@ export function runtimeStatus(config: AppConfig): Record<string, unknown> {
   };
   const enabledSources = enabledSearchSources(config);
   const warnings: string[] = [];
-  if (!configured(config.mcpAccessToken)) {
-    warnings.push("MCP_ACCESS_TOKEN is missing; HTTP tool calls require a valid credential-bundle token");
-  }
   if (!credentialStatus.kakao_rest_api_key_configured) warnings.push("KAKAO_REST_API_KEY is missing");
   if (!credentialStatus.naver_client_id_configured) warnings.push("NAVER_CLIENT_ID is missing");
   if (!credentialStatus.naver_client_secret_configured) warnings.push("NAVER_CLIENT_SECRET is missing");
@@ -42,6 +39,9 @@ export function runtimeStatus(config: AppConfig): Record<string, unknown> {
   return {
     service: "WheelMate Review Search MCP",
     status: "ok",
+    access: {
+      authentication: "none"
+    },
     build: {
       sha: buildSha,
       short_sha: shortSha(buildSha),

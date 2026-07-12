@@ -12,7 +12,6 @@
     "start": "node dist/index.js",
     "start:http": "node dist/http.js",
     "ingest": "tsx src/data/ingest.ts",
-    "token:playmcp": "tsx src/scripts/generatePlayMcpToken.ts",
     "qa:live": "tsx src/scripts/qaLiveQueryMatrix.ts",
     "smoke:submission": "tsx src/scripts/smokeSubmissionExamples.ts",
     "test": "vitest run",
