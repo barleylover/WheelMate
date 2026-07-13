@@ -16,6 +16,7 @@ export interface PlaceRelevanceAssessment {
   matched_name?: string;
   matched_field?: "title" | "snippet";
   location_match: boolean;
+  location_required: boolean;
 }
 
 const GENERIC_NAME_TOKENS = new Set([
@@ -50,6 +51,30 @@ function includesNeedle(text: string, needle?: string): boolean {
   return text.includes(normalizedNeedle) || compact(text).includes(compact(normalizedNeedle));
 }
 
+function locationNeedles(value?: string): string[] {
+  const normalized = normalizeText(value);
+  if (!normalized) return [];
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const mostSpecificToken = tokens.at(-1) ?? normalized;
+  const variants = [normalized, mostSpecificToken];
+  const withoutLocalSuffix = mostSpecificToken.replace(
+    /(?:특별자치도|특별자치시|특별시|광역시|역|동|시|군|구|도)$/u,
+    ""
+  );
+  if (withoutLocalSuffix.length >= 2) variants.push(withoutLocalSuffix);
+  return [...new Set(variants.map(compact).filter((token) => token.length >= 2))];
+}
+
+function includesAnyLocation(text: string, value?: string): boolean {
+  const compactText = compact(text);
+  return locationNeedles(value).some((needle) => compactText.includes(needle));
+}
+
+function requiresLocationCorroboration(placeName: string): boolean {
+  const normalized = normalizeText(placeName);
+  return compact(normalized).length <= 4 || /(?:본점|직영점|지점|점)$/u.test(normalized);
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -69,6 +94,48 @@ function containsShortExactName(text: string, name: string): boolean {
     }
   }
   return false;
+}
+
+interface RelevanceField {
+  name: "title" | "snippet";
+  text: string;
+  compact: string;
+}
+
+function canonicalBranch(value: string): string {
+  return value
+    .replace(/(?:본점|직영점|지점|점)$/g, "")
+    .replace(/역(?=지하|상가|$)/g, "");
+}
+
+function branchAwareExactField(
+  fields: RelevanceField[],
+  placeName: string
+): { field: RelevanceField; matchedName: string } | undefined {
+  const tokens = normalizeText(placeName).split(/\s+/).filter(Boolean);
+  const branchToken = tokens.at(-1);
+  if (tokens.length < 2 || !branchToken || !/(?:본점|직영점|지점|점)$/.test(branchToken)) return undefined;
+
+  const rawBrand = compact(tokens.slice(0, -1).join(" "));
+  const canonicalBrand = rawBrand.replace(/[a-z]+/g, "");
+  const branch = canonicalBranch(compact(branchToken));
+  if (canonicalBrand.length < 3 || branch.length < 2 || GENERIC_NAME_TOKENS.has(canonicalBrand)) return undefined;
+
+  for (const field of fields) {
+    const canonicalField = field.compact
+      .replace(/[a-z]+/g, "")
+      .replace(/역(?=지하|상가|점|$)/g, "");
+    const brandIndex = canonicalField.indexOf(canonicalBrand);
+    const branchIndex = canonicalField.indexOf(branch);
+    if (brandIndex < 0 || branchIndex < 0) continue;
+    const brandEnd = brandIndex + canonicalBrand.length;
+    const branchEnd = branchIndex + branch.length;
+    const gap = Math.max(0, Math.max(brandIndex, branchIndex) - Math.min(brandEnd, branchEnd));
+    if (gap > 10) continue;
+    const matchedName = [rawBrand, canonicalBrand].find((value) => field.compact.includes(value));
+    if (matchedName) return { field, matchedName };
+  }
+  return undefined;
 }
 
 export function placeNameVariants(placeName: string): string[] {
@@ -100,12 +167,13 @@ export function assessPlaceRelevance(
   // Never compact across the title/snippet boundary. Doing so can invent a
   // venue entity: a title ending in "카페" plus a snippet beginning with
   // "오늘은" previously matched the real Kakao place "카페오늘은".
-  const fields = [
+  const fields: RelevanceField[] = [
     { name: "title" as const, text: title, compact: compact(title) },
     { name: "snippet" as const, text: snippet, compact: compact(snippet) }
   ];
   const variants = placeNameVariants(context.placeName);
   const exactName = compact(context.placeName);
+  const locationRequired = requiresLocationCorroboration(context.placeName);
   let nameMatch: PlaceRelevanceAssessment["name_match"] = "none";
   let matchedName: string | undefined;
   let matchedField: PlaceRelevanceAssessment["matched_field"];
@@ -114,10 +182,16 @@ export function assessPlaceRelevance(
   const exactField = exactName.length >= 3
     ? fields.find((field) => field.compact.includes(exactName))
     : fields.find((field) => containsShortExactName(field.text, context.placeName));
+  const branchExactField = exactField ? undefined : branchAwareExactField(fields, context.placeName);
   if (exactField) {
     nameMatch = "exact";
     matchedName = exactName;
     matchedField = exactField.name;
+    score = 0.65;
+  } else if (branchExactField) {
+    nameMatch = "exact";
+    matchedName = branchExactField.matchedName;
+    matchedField = branchExactField.field.name;
     score = 0.65;
   } else {
     const aliasMatch = variants.flatMap((variant) =>
@@ -137,13 +211,14 @@ export function assessPlaceRelevance(
   // about that place. This hard boundary prevents generic area articles from
   // being attached to every nearby candidate.
   if (nameMatch === "none") {
-    return { score: 0, name_match: "none", location_match: false };
+    return { score: 0, name_match: "none", location_match: false, location_required: locationRequired };
   }
 
-  const locationMatch = includesNeedle(text, context.neighborhood) ||
+  const neighborhoodMatch = includesAnyLocation(text, context.neighborhood);
+  const locationMatch = neighborhoodMatch ||
     includesNeedle(text, context.district) ||
     includesNeedle(text, context.addressToken);
-  if (includesNeedle(text, context.neighborhood)) score += 0.15;
+  if (neighborhoodMatch) score += 0.15;
   if (includesNeedle(text, context.district) || includesNeedle(text, context.addressToken)) score += 0.1;
   if (includesNeedle(text, context.category)) score += 0.05;
   return {
@@ -151,7 +226,8 @@ export function assessPlaceRelevance(
     name_match: nameMatch,
     matched_name: matchedName,
     matched_field: matchedField,
-    location_match: locationMatch
+    location_match: locationMatch,
+    location_required: locationRequired
   };
 }
 
@@ -242,5 +318,6 @@ export function placeEvidenceIsRecommendationSafe(
   signals: ReviewSignal[]
 ): boolean {
   return assessment.name_match === "exact" &&
+    (!assessment.location_required || assessment.location_match) &&
     placeEvidenceIsAttributable(result, assessment, signals);
 }

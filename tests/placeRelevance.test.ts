@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assessPlaceRelevance,
   calculatePlaceRelevance,
-  placeEvidenceIsAttributable
+  placeEvidenceIsAttributable,
+  placeEvidenceIsRecommendationSafe
 } from "../src/reviewSearch/placeRelevance.js";
 import { extractSignals } from "../src/reviewSearch/signalExtractor.js";
 
@@ -42,6 +43,109 @@ describe("calculatePlaceRelevance", () => {
       { ...context, placeName: "블랑제리르팡", neighborhood: "사당역" }
     );
     expect(score).toBeGreaterThanOrEqual(0.45);
+  });
+
+  it("accepts a branch-specific brand spelling variant without accepting brand-only evidence", () => {
+    const matching = {
+      title: "메가커피 잠실역 지하상가점 방문 후기",
+      snippet: "매장 휠체어 출입 가능"
+    };
+    const matchingAssessment = assessPlaceRelevance(matching, {
+      ...context,
+      placeName: "메가MGC커피 잠실지하상가점",
+      neighborhood: "잠실역"
+    });
+    const matchingSignals = extractSignals({ ...matching, source: "naver_blog", link: "", date: null });
+    expect(matchingAssessment.name_match).toBe("exact");
+    expect(placeEvidenceIsRecommendationSafe(matching, matchingAssessment, matchingSignals)).toBe(true);
+
+    const wrongBranch = {
+      title: "메가커피 강남역점 방문 후기",
+      snippet: "매장 휠체어 출입 가능"
+    };
+    const wrongAssessment = assessPlaceRelevance(wrongBranch, {
+      ...context,
+      placeName: "메가MGC커피 잠실지하상가점",
+      neighborhood: "잠실역"
+    });
+    const wrongSignals = extractSignals({ ...wrongBranch, source: "naver_blog", link: "", date: null });
+    expect(wrongAssessment.name_match).not.toBe("exact");
+    expect(placeEvidenceIsRecommendationSafe(wrongBranch, wrongAssessment, wrongSignals)).toBe(false);
+  });
+
+  it("requires the requested area for branch names that can collide nationwide", () => {
+    const wrongArea = {
+      title: "원주 무실동 카페 스타벅스 시청점 베이커리",
+      snippet: "매장 출입구는 휠체어 이용 가능"
+    };
+    const wrongAssessment = assessPlaceRelevance(wrongArea, {
+      ...context,
+      placeName: "스타벅스 시청점",
+      neighborhood: "서울",
+      district: "중구"
+    });
+    const wrongSignals = extractSignals({ ...wrongArea, source: "naver_blog", link: "", date: null });
+    expect(wrongAssessment).toMatchObject({ name_match: "exact", location_required: true, location_match: false });
+    expect(placeEvidenceIsRecommendationSafe(wrongArea, wrongAssessment, wrongSignals)).toBe(false);
+
+    const matchingArea = {
+      title: "서울 중구 스타벅스 시청점 방문",
+      snippet: "매장 출입구는 휠체어 이용 가능"
+    };
+    const matchingAssessment = assessPlaceRelevance(matchingArea, {
+      ...context,
+      placeName: "스타벅스 시청점",
+      neighborhood: "서울",
+      district: "중구"
+    });
+    const matchingSignals = extractSignals({ ...matchingArea, source: "naver_blog", link: "", date: null });
+    expect(matchingAssessment).toMatchObject({ location_required: true, location_match: true });
+    expect(placeEvidenceIsRecommendationSafe(matchingArea, matchingAssessment, matchingSignals)).toBe(true);
+  });
+
+  it("requires regional corroboration for short venue names", () => {
+    const wrongArea = {
+      title: "마산가포맛집 황금어장 방문",
+      snippet: "입구에 경사로가 있어 휠체어 출입 가능"
+    };
+    const wrongAssessment = assessPlaceRelevance(wrongArea, {
+      ...context,
+      placeName: "황금어장",
+      neighborhood: "제주도",
+      district: "제주시"
+    });
+    const wrongSignals = extractSignals({ ...wrongArea, source: "naver_blog", link: "", date: null });
+    expect(wrongAssessment).toMatchObject({ name_match: "exact", location_required: true, location_match: false });
+    expect(placeEvidenceIsRecommendationSafe(wrongArea, wrongAssessment, wrongSignals)).toBe(false);
+
+    const matchingArea = {
+      title: "서울 카페 세 곳",
+      snippet: "아늑한 카페 소낙입니다. 소낙 주 출입구는 단차 없는 문입니다"
+    };
+    const matchingAssessment = assessPlaceRelevance(matchingArea, {
+      ...context,
+      placeName: "소낙",
+      neighborhood: "서울"
+    });
+    const matchingSignals = extractSignals({ ...matchingArea, source: "naver_blog", link: "", date: null });
+    expect(matchingAssessment).toMatchObject({ location_required: true, location_match: true });
+    expect(placeEvidenceIsRecommendationSafe(matchingArea, matchingAssessment, matchingSignals)).toBe(true);
+  });
+
+  it("does not accept only a broad city match when a specific neighborhood was requested", () => {
+    const wrongNeighborhood = {
+      title: "부산 해운대 카페 봄날 방문",
+      snippet: "매장 출입구는 휠체어 이용 가능"
+    };
+    const assessment = assessPlaceRelevance(wrongNeighborhood, {
+      ...context,
+      placeName: "봄날",
+      neighborhood: "부산 서면역",
+      district: "부산진구"
+    });
+    const signals = extractSignals({ ...wrongNeighborhood, source: "naver_blog", link: "", date: null });
+    expect(assessment).toMatchObject({ name_match: "exact", location_required: true, location_match: false });
+    expect(placeEvidenceIsRecommendationSafe(wrongNeighborhood, assessment, signals)).toBe(false);
   });
 
   it("does not confuse a nearby venue with the venue named by the source", () => {

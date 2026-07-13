@@ -84,6 +84,7 @@ export class ReviewSearchService {
           place_matched_name: relevance.matched_name,
           place_matched_field: relevance.matched_field,
           place_location_match: relevance.location_match,
+          place_location_required: relevance.location_required,
           signals: extractSignals(result)
         };
       })
@@ -95,7 +96,8 @@ export class ReviewSearchService {
           name_match: result.place_name_match,
           matched_name: result.place_matched_name,
           matched_field: result.place_matched_field,
-          location_match: result.place_location_match
+          location_match: result.place_location_match,
+          location_required: result.place_location_required ?? false
         }, result.signals)
       )
       .map((result) => {

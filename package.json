@@ -15,7 +15,7 @@
     "qa:live": "tsx src/scripts/qaLiveQueryMatrix.ts",
     "smoke:submission": "tsx src/scripts/smokeSubmissionExamples.ts",
     "test": "vitest run",
-    "test:coverage:recommendation": "vitest run tests/recommendationEngine.test.ts --coverage --coverage.include=src/search/recommendationEngine.ts --coverage.reporter=text --coverage.reporter=json-summary",
+    "test:coverage:recommendation": "vitest run --coverage --coverage.include='src/search/**/*.ts' --coverage.include='src/reviewSearch/**/*.ts' --coverage.include='src/clients/{kakaoLocalClient,naverSearchClient,daumSearchClient}.ts' --coverage.include='src/utils/{retry,requestBudget,rateLimit,concurrency}.ts' --coverage.reporter=text --coverage.reporter=json-summary",
     "check": "pnpm run build && pnpm test"
   },
   "dependencies": {

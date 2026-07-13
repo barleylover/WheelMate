@@ -70,7 +70,7 @@ export function loadConfig(): AppConfig {
     maxReviewSearchCalls: intEnv("MAX_REVIEW_SEARCH_CALLS", 60, 1, 120),
     reviewCandidateConcurrency: intEnv("REVIEW_CANDIDATE_CONCURRENCY", 2, 1, 4),
     maxExternalApiCallsPerRequest: intEnv("MAX_EXTERNAL_API_CALLS_PER_REQUEST", 40, 8, 120),
-    searchResultsPerQuery: intEnv("SEARCH_RESULTS_PER_QUERY", 3, 1, 50),
+    searchResultsPerQuery: intEnv("SEARCH_RESULTS_PER_QUERY", 5, 1, 50),
     searchTimeoutMs: intEnv("SEARCH_TIMEOUT_MS", 3500, 500, 30_000),
     dbPath: optionalEnv("DB_PATH") ?? "./data/accessibility.db"
   };

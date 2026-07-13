@@ -90,6 +90,7 @@ export interface ReviewEvidence extends NormalizedSearchResult {
   place_matched_name?: string;
   place_matched_field?: "title" | "snippet";
   place_location_match?: boolean;
+  place_location_required?: boolean;
   attribution_verified?: boolean;
 }
 

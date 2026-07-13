@@ -21,6 +21,30 @@ function provider(input: {
 }
 
 describe("place-first candidate search", () => {
+  it("mixes point-distance candidates with location-category keyword results", async () => {
+    const intent = resolveSearchIntent(
+      { location: "잠실역", category: "cafe" },
+      { defaultRadiusM: 1000, defaultLimit: 5 }
+    );
+    const pointOrigin: Origin = { name: "잠실역", lat: 37.513, lng: 127.1, provider: "test" };
+    const nearby = { ...place("1", "가까운카페", "음식점 > 카페", "서울 송파구"), lat: 37.513, lng: 127.1 };
+    const keyword = { ...place("2", "대표카페 잠실점", "음식점 > 카페", "서울 송파구"), lat: 37.514, lng: 127.101 };
+    const result = await buildCandidatePool({
+      intent,
+      origin: pointOrigin,
+      provider: provider({
+        category: [nearby],
+        keywords: { "잠실역 카페": [keyword] }
+      })
+    });
+
+    expect(result.candidates.map((item) => item.name)).toEqual(["대표카페 잠실점", "가까운카페"]);
+    expect(result.diagnostics.strategies).toMatchObject({
+      category_nearby: 1,
+      location_category_keyword: 1
+    });
+  });
+
   it("prioritizes content matches without deleting generic fallback places", async () => {
     const intent = resolveSearchIntent({ query: "제주도 횟집 휠체어" }, { defaultRadiusM: 1000, defaultLimit: 5 });
     const result = await buildCandidatePool({

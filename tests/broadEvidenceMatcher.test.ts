@@ -25,7 +25,7 @@ describe("broad evidence matcher", () => {
     const intent = resolveSearchIntent({ query: "제주도 횟집 휠체어" }, { defaultRadiusM: 1000, defaultLimit: 5 });
     expect(buildBroadEvidenceQueries(intent).slice(0, 2)).toEqual([
       "제주도 횟집 휠체어 출입",
-      "제주도 회 휠체어 출입"
+      "제주도 횟집 장애인 편의시설"
     ]);
   });
 
@@ -40,7 +40,7 @@ describe("broad evidence matcher", () => {
       query: "잠실역 카페 휠체어",
       results: [
         result("A카페 방문", "휠체어 지하철 접근 가능", "https://example.com/transit"),
-        result("B카페 방문", "매장 출입구는 휠체어 이용 가능", "https://example.com/venue"),
+        result("잠실역 B카페 방문", "매장 출입구는 휠체어 이용 가능", "https://example.com/venue"),
         result("잠실 카페 모음", "휠체어 이용 가능", "https://example.com/generic")
       ]
     }];

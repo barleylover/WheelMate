@@ -94,6 +94,7 @@ function attachDistance(place: PlaceCandidate, intent: ResolvedSearchIntent, ori
 function strategyScore(strategies: Set<string>): number {
   let score = 0;
   if (strategies.has("content_keyword")) score += 60;
+  if (strategies.has("location_category_keyword")) score += 30;
   if (strategies.has("regional_keyword")) score += 25;
   if (strategies.has("category_nearby")) score += 15;
   if (strategies.has("category_page_2")) score += 10;
@@ -151,6 +152,22 @@ export async function buildCandidatePool(input: {
         input.intent.radiusM,
         15
       )
+    });
+  }
+
+  if (input.intent.scope === "point") {
+    const label = categoryKeyword(input.intent.category) || "장소";
+    tasks.push({
+      strategy: "location_category_keyword",
+      run: () => input.provider.keywordSearchPage(`${input.intent.location} ${label}`, {
+        x: input.origin.lng,
+        y: input.origin.lat,
+        radius: input.intent.radiusM,
+        size: 15,
+        page: 1,
+        sort: "accuracy",
+        categoryGroupCode: categoryCode
+      })
     });
   }
 

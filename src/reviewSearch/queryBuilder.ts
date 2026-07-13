@@ -31,20 +31,32 @@ function compact(parts: Array<string | undefined>): string {
   return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
+function neighborhoodForQuery(placeName: string, neighborhood?: string): string | undefined {
+  if (!neighborhood) return undefined;
+  const compactPlace = placeName.replace(/\s+/g, "").toLowerCase();
+  const locationTokens = neighborhood
+    .split(/\s+/)
+    .map((item) => item.replace(/\s+/g, "").toLowerCase())
+    .filter((item) => item.length >= 2);
+  return locationTokens.some((token) => compactPlace.includes(token)) ? undefined : neighborhood;
+}
+
 export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 5): string[] {
   const knownCategories = new Set(["cafe", "restaurant", "culture", "museum", "restroom", "charger", "any"]);
   const category =
     context.category && knownCategories.has(String(context.category))
       ? categoryKeyword(context.category as Category)
       : context.category;
-  const baseParts = [context.placeName, context.neighborhood];
+  // Repeating a branch location (for example, "잠실역점 잠실역") makes
+  // search-engine matching unnecessarily strict. Keep the location only when
+  // the concrete Kakao place name does not already contain it.
+  const baseParts = [context.placeName, neighborhoodForQuery(context.placeName, context.neighborhood)];
   const candidates = [
-    compact([...baseParts, "휠체어 출입 접근"]),
-    compact([...baseParts, "문턱 없음 경사로"]),
-    compact([...baseParts, "계단 엘리베이터 장애인 화장실"]),
+    compact([...baseParts, "휠체어"]),
+    compact([...baseParts, "장애인 편의시설"]),
     compact([...baseParts, "휠체어 이용 가능"]),
-    compact([...baseParts, "유모차 휠체어"]),
-    compact([context.placeName, context.district, "무장애 배리어프리"]),
+    compact([...baseParts, "문턱 경사로 엘리베이터"]),
+    compact([context.placeName, context.district, "배리어프리 무장애"]),
     compact([context.placeName, context.addressToken, category, "휠체어"])
   ].filter(Boolean);
 
@@ -61,7 +73,10 @@ export function buildReviewQueries(context: ReviewQueryContext, maxQueries = 5):
   }
 
   const prioritized = priorities.map((term) => compact([...baseParts, term]));
-  const unique = [...prioritized, ...candidates].filter(
+  // Always retain one high-recall wheelchair query before preference-specific
+  // variants. This prevents a narrow preference from consuming the complete
+  // per-candidate search budget.
+  const unique = [candidates[0], ...prioritized, ...candidates.slice(1)].filter(
     (query, index, all) => query && all.indexOf(query) === index
   );
   return unique.slice(0, maxQueries);

@@ -74,6 +74,7 @@ function serializeEvidence(evidence: ReviewEvidence[], limit = 3): Array<Record<
     place_matched_name: item.place_matched_name,
     place_matched_field: item.place_matched_field,
     place_location_match: item.place_location_match,
+    place_location_required: item.place_location_required,
     attribution_verified: item.attribution_verified === true,
     signals: item.signals.slice(0, 4).map((signal) => ({
       polarity: signal.polarity,

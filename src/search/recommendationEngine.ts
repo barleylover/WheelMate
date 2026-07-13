@@ -114,8 +114,13 @@ function candidateBudgetLimits(total: number, count: number): number[] {
 }
 
 const MINIMUM_RESULT_TARGET = 3;
-const INITIAL_REVIEW_BATCH_SIZE = 5;
-const MAX_REVIEW_QUERIES_PER_CANDIDATE = 3;
+const INITIAL_REVIEW_BATCH_SIZE = 3;
+// Accessibility evidence is sparse across nearby venues. Spend the review
+// budget on two independent blog providers for more candidates instead of a
+// third query for a smaller nearest-only slice. Broad discovery already covers
+// alternate wordings and web surfaces.
+const INITIAL_REVIEW_CALLS_PER_CANDIDATE = 2;
+const SUPPLEMENTAL_REVIEW_CALLS_PER_CANDIDATE = 1;
 
 function interpretation(intent: ResolvedSearchIntent, extraWarnings: string[]): QueryInterpretation {
   return {
@@ -199,7 +204,11 @@ export async function runRecommendationEngine(
     };
 
   const resultTarget = Math.min(intent.limit, MINIMUM_RESULT_TARGET);
-  const candidatesToAnalyze = broadResult.candidates.slice(0, config.maxPlaceCandidates);
+  // Evidence-discovered venues should extend the Kakao candidate pool instead
+  // of evicting its farthest original venue. The request budget, not this
+  // merge, remains the hard bound on exact-place review calls.
+  const analysisCandidateLimit = config.maxPlaceCandidates + broadResult.diagnostics.discovered_candidates;
+  const candidatesToAnalyze = broadResult.candidates.slice(0, analysisCandidateLimit);
   const analyzedCandidates: Array<{ ranked: RankedPlace; budget: RequestBudgetSnapshot }> = [];
   let nextCandidateIndex = 0;
   let reviewBudgetUsed = 0;
@@ -220,9 +229,12 @@ export async function runRecommendationEngine(
     if (batchSize <= 0) break;
 
     const batch = candidatesToAnalyze.slice(nextCandidateIndex, nextCandidateIndex + batchSize);
+    const candidateCallCap = analyzedCandidates.length === 0
+      ? INITIAL_REVIEW_CALLS_PER_CANDIDATE
+      : SUPPLEMENTAL_REVIEW_CALLS_PER_CANDIDATE;
     const batchBudgetTotal = Math.min(
       remainingBudget,
-      batch.length * MAX_REVIEW_QUERIES_PER_CANDIDATE
+      batch.length * candidateCallCap
     );
     const budgetLimits = candidateBudgetLimits(batchBudgetTotal, batch.length);
     const batchResults = await mapWithConcurrency(
@@ -235,9 +247,9 @@ export async function runRecommendationEngine(
           new ReviewSearchService(config, candidateBudget);
         const review = await reviewSearch.analyzePlace(
           place,
-          intent.scope === "point" ? intent.location : undefined,
+          intent.location,
           intent.preferences,
-          Math.min(MAX_REVIEW_QUERIES_PER_CANDIDATE, candidateBudgetLimit)
+          Math.min(candidateCallCap, candidateBudgetLimit)
         );
         const supportFacilities = publicData.findNearbySupportFacilities(
           place,

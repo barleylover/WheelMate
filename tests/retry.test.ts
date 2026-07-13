@@ -57,4 +57,31 @@ describe("fetchJson retry policy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(budget.used).toBe(1);
   });
+
+  it("retries a transient network failure and succeeds within budget", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("network fetch failed"))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const budget = new RequestBudget(2);
+
+    const result = fetchJson<{ ok: boolean }>("https://example.com", {}, 1_000, budget);
+    await vi.runAllTimersAsync();
+
+    await expect(result).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(budget.snapshot()).toEqual({ limit: 2, used: 2, remaining: 0, exhausted: true });
+  });
+
+  it("does not retry malformed JSON returned with a successful HTTP status", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("not-json", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchJson("https://example.com", {}, 1_000)).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

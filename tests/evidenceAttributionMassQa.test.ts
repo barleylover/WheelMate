@@ -78,6 +78,7 @@ describe("mass place-to-evidence attribution QA", () => {
     {
       name: "venue in snippet next to signal",
       place: "소낙",
+      neighborhood: "서울",
       title: "서울 카페 세 곳",
       snippet: "아늑한 카페 소낙입니다. 소낙 주 출입구는 단차 없는 문입니다",
       expected: true

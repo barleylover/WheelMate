@@ -17,7 +17,7 @@ const places: PlaceCandidate[] = [
 
 const venueEvidence: ReviewEvidence = {
   source: "naver_blog",
-  title: "검증카페 방문 후기",
+  title: "잠실역 검증카페 방문 후기",
   snippet: "검증카페 매장 출입구는 휠체어 이용 가능",
   link: "https://example.com/verified",
   date: "20260701",
@@ -187,11 +187,11 @@ describe("place-first recommendation engine", () => {
         review: {
           limit: 21,
           candidates: [
-            { limit: 3 },
-            { limit: 3 },
-            { limit: 3 },
-            { limit: 3 },
-            { limit: 3 }
+            { limit: 2 },
+            { limit: 2 },
+            { limit: 2 },
+            { limit: 1 },
+            { limit: 1 }
           ]
         }
       }
@@ -416,7 +416,7 @@ describe("place-first recommendation engine", () => {
         verification_required_candidates: 0
       },
       request_budget: {
-        allocations: { review: { limit: 20, used: 20 } }
+        allocations: { review: { limit: 20, used: 10 } }
       }
     });
     expect((output.recommendations as Array<{ name: string }>).map((item) => item.name)).toEqual([

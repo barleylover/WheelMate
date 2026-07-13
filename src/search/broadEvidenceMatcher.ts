@@ -141,7 +141,7 @@ async function discoverCandidatesFromEvidence(input: {
       if (!candidateWithinIntentArea(place, input.intent, input.origin)) continue;
       const relevance = assessPlaceRelevance(
         item.evidence,
-        placeToRelevanceContext(place, input.intent.scope === "point" ? input.intent.location : undefined)
+        placeToRelevanceContext(place, input.intent.location)
       );
       // Discovery is the highest-risk boundary: this result creates a new
       // venue candidate. Require the complete Kakao place name in the search
@@ -155,6 +155,7 @@ async function discoverCandidatesFromEvidence(input: {
         place_matched_name: relevance.matched_name,
         place_matched_field: relevance.matched_field,
         place_location_match: relevance.location_match,
+        place_location_required: relevance.location_required,
         attribution_verified: true
       };
       const key = lookupKey(place);
@@ -173,10 +174,14 @@ export function buildBroadEvidenceQueries(intent: ResolvedSearchIntent): string[
   const targets = intent.contentPreferences.length > 0
     ? unique(intent.contentPreferences.slice(0, 2))
     : [category];
+  const primaryTarget = targets[0] ?? category;
   return unique([
-    ...targets.map((target) => `${intent.location} ${target} 휠체어 출입`),
-    ...targets.map((target) => `${intent.location} ${target} 문턱 경사로`),
-    `${intent.location} ${category} 배리어프리`
+    `${intent.location} ${primaryTarget} 휠체어 출입`,
+    `${intent.location} ${primaryTarget} 장애인 편의시설`,
+    ...targets.slice(1).map((target) => `${intent.location} ${target} 휠체어 출입`),
+    `${intent.location} ${primaryTarget} 휠체어 이용 가능`,
+    `${intent.location} ${category} 배리어프리`,
+    `${intent.location} ${category} 문턱 경사로`
   ]).slice(0, 5);
 }
 
@@ -203,7 +208,7 @@ function matchOutcomesToCandidate(
   intent: ResolvedSearchIntent,
   outcomes: SourceSearchOutcome[]
 ): ReviewEvidence[] {
-  const context = placeToRelevanceContext(place, intent.scope === "point" ? intent.location : undefined);
+  const context = placeToRelevanceContext(place, intent.location);
   const matched = outcomes.flatMap((outcome) => outcome.results).flatMap((result) => {
     const relevance = assessPlaceRelevance(result, context);
     if (relevance.score < 0.48) return [];
@@ -214,6 +219,7 @@ function matchOutcomesToCandidate(
       place_matched_name: relevance.matched_name,
       place_matched_field: relevance.matched_field,
       place_location_match: relevance.location_match,
+      place_location_required: relevance.location_required,
       signals: extractSignals(result)
     };
     return recommendationSignal(evidence) && placeEvidenceIsRecommendationSafe(result, relevance, evidence.signals)

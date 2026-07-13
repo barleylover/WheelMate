@@ -63,7 +63,7 @@ Required/optional variables:
 - `MAX_REVIEW_SEARCH_CALLS=60`
 - `REVIEW_CANDIDATE_CONCURRENCY=2` parallel candidate analyses, clamped to 1-4
 - `MAX_EXTERNAL_API_CALLS_PER_REQUEST=40` hard cap including retries
-- `SEARCH_RESULTS_PER_QUERY=3`
+- `SEARCH_RESULTS_PER_QUERY=5`
 - `SEARCH_TIMEOUT_MS=3500`
 - `PORT=8080`
 - `HOST=0.0.0.0`
