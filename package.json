@@ -15,6 +15,7 @@
     "qa:live": "tsx src/scripts/qaLiveQueryMatrix.ts",
     "smoke:submission": "tsx src/scripts/smokeSubmissionExamples.ts",
     "test": "vitest run",
+    "test:coverage:recommendation": "vitest run tests/recommendationEngine.test.ts --coverage --coverage.include=src/search/recommendationEngine.ts --coverage.reporter=text --coverage.reporter=json-summary",
     "check": "pnpm run build && pnpm test"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.1.9",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"

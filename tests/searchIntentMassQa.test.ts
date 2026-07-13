@@ -75,6 +75,10 @@ const CASES: IntentCase[] = [
   { query: "서울이 아니라 부산 해운대 휠체어 카페", location: "부산 해운대", category: "cafe", content: [] },
   { query: "식당 대신 성수동 휠체어 카페", location: "성수동", category: "cafe", content: [] },
   { query: "홍대 카페는 싫고 합정역 휠체어 식당", location: "합정역", category: "restaurant", content: [] },
+  { query: "강남역 엘리베이터 말고 경사로 있는 카페", location: "강남역", category: "cafe", content: [], preferences: ["입구중요"] },
+  { query: "잠실역 엘리베이터 없는 카페", location: "잠실역", category: "cafe", content: [], preferences: [] },
+  { query: "잠실역 장애인 화장실 없는 카페", location: "잠실역", category: "cafe", content: [], preferences: [] },
+  { query: "사당역 전동휠체어 충전기 필요 없는 식당", location: "사당역", category: "restaurant", content: [], preferences: [] },
 
   // Concrete content terms and free-form requirements.
   { query: "마곡나루역 휠체어 비건 샐러드", location: "마곡나루역", category: "restaurant", content: ["비건", "채식", "샐러드"] },

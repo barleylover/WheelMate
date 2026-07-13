@@ -67,6 +67,8 @@ export function sortRankedPlaces(items: RankedPlace[]): RankedPlace[] {
     const bandB = rankingBand(b.review.review_signal_grade, b.official_support_grade);
     const priorityDiff = GRADE_PRIORITY[bandB] - GRADE_PRIORITY[bandA];
     if (priorityDiff !== 0) return priorityDiff;
+    const rankingScoreDiff = b.ranking_score - a.ranking_score;
+    if (rankingScoreDiff !== 0) return rankingScoreDiff;
     const scoreDiff = b.review.review_signal_score - a.review.review_signal_score;
     if (scoreDiff !== 0) return scoreDiff;
     return (a.place.distance_m ?? Number.POSITIVE_INFINITY) - (b.place.distance_m ?? Number.POSITIVE_INFINITY);

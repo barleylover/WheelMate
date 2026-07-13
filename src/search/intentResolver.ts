@@ -63,7 +63,7 @@ const GENERIC_OR_ACCESSIBILITY_TERMS = new Set([
   "베리어프리", "문턱", "단차", "경사로", "슬로프", "계단", "엘리베이터", "엘베", "승강기",
   "화장실", "장애인화장실", "충전기", "전동휠체어충전기", "유모차", "조용한", "분위기", "분위기좋은", "넓은", "맛있는", "맛집",
   "좋은", "용이한", "용이", "편한", "편하게", "근처", "주변", "인근", "부근", "추천", "추천좀",
-  "추천해줘", "찾아줘", "가야해", "갈거야", "갈게", "갈께", "가려고", "가려는데", "갈건데",
+  "추천해줘", "찾아줘", "필요", "불필요", "있는", "없는", "있음", "없음", "가야해", "갈거야", "갈게", "갈께", "가려고", "가려는데", "갈건데",
   "갈텐데", "방문할거야", "갈만한", "가기좋은", "타고", "장소", "곳", "가게", "음식점", "식당", "카페"
 ]);
 
@@ -130,12 +130,18 @@ function inferAccessibilityPreferences(
   locations: Array<string | undefined> = []
 ): string[] {
   if (!query) return [];
-  const target = stripLocations(query, locations);
+  const target = stripLocations(focusedTarget(query), locations);
   const preferences: string[] = [];
-  if (category !== "restroom" && /(?:장애인|다목적|무장애)\s*화장실/.test(target)) {
+  if (
+    category !== "restroom" &&
+    hasNonNegatedMention(target, /(?:장애인|다목적|무장애)\s*화장실/)
+  ) {
     preferences.push("장애인화장실");
   }
-  if (category !== "charger" && /(?:전동)?휠체어\s*충전기|충전기\s*(?:근처|주변|가까운|인근)/.test(target)) {
+  if (
+    category !== "charger" &&
+    hasNonNegatedMention(target, /(?:전동)?휠체어\s*충전기|충전기\s*(?:근처|주변|가까운|인근)/)
+  ) {
     preferences.push("충전기근처");
   }
   if (/(?:문턱|단차|경사로|슬로프|출입구|입구)/.test(target)) {
@@ -144,10 +150,23 @@ function inferAccessibilityPreferences(
   if (/계단.{0,12}(?:없|피|회피|싫|어렵|힘들|못)/.test(target)) {
     preferences.push("계단회피");
   }
-  if (/(?:엘리베이터|엘베|승강기)/.test(target)) {
+  if (hasNonNegatedMention(target, /(?:엘리베이터|엘베|승강기)/)) {
     preferences.push("엘리베이터");
   }
   return [...new Set(preferences)];
+}
+
+function hasNonNegatedMention(target: string, pattern: RegExp): boolean {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  for (const match of target.matchAll(new RegExp(pattern.source, flags))) {
+    const suffixStart = (match.index ?? 0) + match[0].length;
+    const suffix = target.slice(suffixStart, suffixStart + 18);
+    if (/^\s*(?:이|가|은|는|을|를|도)?\s*(?:없|제외|말고|싫|불필요|필요\s*없|상관\s*없)/.test(suffix)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 function normalizeContentTerm(value: string): string {

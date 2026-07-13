@@ -53,6 +53,18 @@ describe("review ranking", () => {
     expect(sorted.map((item) => item.place.name)).toEqual(["r1", "r2", "o1", "r3"]);
   });
 
+  it("uses the computed ranking score before distance inside the same evidence band", () => {
+    const closer = ranked("closer", "R1", "none", 80);
+    closer.place.distance_m = 100;
+    closer.ranking_score = 580;
+    const preferred = ranked("preferred", "R1", "none", 80);
+    preferred.place.distance_m = 500;
+    preferred.ranking_score = 600;
+
+    expect(sortRankedPlaces([closer, preferred]).map((item) => item.place.name))
+      .toEqual(["preferred", "closer"]);
+  });
+
   it("partitions W, weak R3, and default R4 outside recommendations", () => {
     const partitions = partitionRankedPlaces([
       ranked("bad", "W", "none", 10),

@@ -1,5 +1,7 @@
 import type { RequestBudget } from "./requestBudget.js";
 
+const MAX_RETRY_DELAY_MS = 5_000;
+
 export async function fetchJson<T>(
   url: string,
   init: RequestInit,
@@ -8,6 +10,7 @@ export async function fetchJson<T>(
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    let retryDelayMs: number | undefined;
     if (budget && !budget.tryConsume()) {
       if (lastError instanceof Error) throw lastError;
       throw new Error("request_budget_exhausted");
@@ -16,10 +19,14 @@ export async function fetchJson<T>(
       const signal = AbortSignal.timeout(timeoutMs);
       const response = await fetch(url, { ...init, signal });
       if (!response.ok) {
-        if (!isRetriableStatus(response.status) || attempt === 2) {
-          throw new Error(`HTTP ${response.status}`);
+        const error = new Error(`HTTP ${response.status}`);
+        const retriable = isRetriableStatus(response.status);
+        if (retriable && attempt < 2) {
+          retryDelayMs = retryAfterDelayMs(response.headers.get("retry-after"));
         }
-        lastError = new Error(`HTTP ${response.status}`);
+        await discardResponseBody(response);
+        if (!retriable || attempt === 2) throw error;
+        lastError = error;
       } else {
         return (await response.json()) as T;
       }
@@ -29,10 +36,35 @@ export async function fetchJson<T>(
         throw error;
       }
     }
-    const throttled = lastError instanceof Error && /HTTP 429/.test(lastError.message);
-    await sleep((throttled ? 600 : 200) * (attempt + 1));
+    await sleep(retryDelayMs ?? fallbackRetryDelayMs(attempt, lastError));
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function retryAfterDelayMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(MAX_RETRY_DELAY_MS, Math.round(seconds * 1_000));
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.min(MAX_RETRY_DELAY_MS, Math.max(0, timestamp - Date.now()));
+}
+
+function fallbackRetryDelayMs(attempt: number, error: unknown): number {
+  const throttled = error instanceof Error && /HTTP 429/.test(error.message);
+  const baseMs = throttled ? 600 : 200;
+  const jitter = 0.75 + Math.random() * 0.5;
+  return Math.min(MAX_RETRY_DELAY_MS, Math.round(baseMs * (2 ** attempt) * jitter));
+}
+
+async function discardResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Releasing an error response body is best-effort only.
+  }
 }
 
 function isRetriableStatus(status: number): boolean {
