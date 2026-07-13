@@ -55,6 +55,7 @@ export function runtimeStatus(config: AppConfig): Record<string, unknown> {
       use_daum_search: config.useDaumSearch,
       enabled_sources: enabledSources,
       max_review_search_calls: config.maxReviewSearchCalls,
+      review_candidate_concurrency: config.reviewCandidateConcurrency,
       max_external_api_calls_per_request: config.maxExternalApiCallsPerRequest,
       search_results_per_query: config.searchResultsPerQuery
     },

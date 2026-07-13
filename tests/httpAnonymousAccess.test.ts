@@ -23,6 +23,7 @@ const config: AppConfig = {
   defaultLimit: 5,
   maxPlaceCandidates: 15,
   maxReviewSearchCalls: 60,
+  reviewCandidateConcurrency: 2,
   maxExternalApiCallsPerRequest: 40,
   searchResultsPerQuery: 3,
   searchTimeoutMs: 3500,

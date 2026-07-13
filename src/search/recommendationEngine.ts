@@ -27,6 +27,7 @@ import type {
   SupportFacility
 } from "../types.js";
 import { RequestBudget, type RequestBudgetSnapshot } from "../utils/requestBudget.js";
+import { mapWithConcurrency } from "../utils/concurrency.js";
 import { attachBroadAccessibilityEvidence, type SearchQueryRunner } from "./broadEvidenceMatcher.js";
 import { buildCandidatePool, type PlaceSearchProvider } from "./candidateSearch.js";
 import {
@@ -100,6 +101,16 @@ function allocations(total: number): { local: number; broad: number; review: num
   // and therefore needs fewer duplicate requests.
   const broad = Math.min(normalized - local, Math.max(2, Math.floor(normalized * 0.3)));
   return { local, broad, review: Math.max(0, normalized - local - broad) };
+}
+
+function candidateBudgetLimits(total: number, count: number): number[] {
+  let remaining = Math.max(0, Math.floor(total));
+  return Array.from({ length: count }, (_, index) => {
+    const remainingCandidates = count - index;
+    const limit = remainingCandidates > 0 ? Math.floor(remaining / remainingCandidates) : 0;
+    remaining -= limit;
+    return limit;
+  });
 }
 
 function interpretation(intent: ResolvedSearchIntent, extraWarnings: string[]): QueryInterpretation {
@@ -188,58 +199,60 @@ export async function runRecommendationEngine(
     Math.max(intent.limit, Math.min(5, config.maxPlaceCandidates))
   );
   const candidates = broadResult.candidates.slice(0, analysisLimit);
-  const ranked: RankedPlace[] = [];
-  const reviewBudgetSnapshots: RequestBudgetSnapshot[] = [];
-  let remainingReviewBudget = allocation.review;
-
-  for (const [index, place] of candidates.entries()) {
-    const remainingCandidates = candidates.length - index;
-    const candidateBudgetLimit = remainingCandidates > 0
-      ? Math.max(0, Math.floor(remainingReviewBudget / remainingCandidates))
-      : 0;
-    remainingReviewBudget -= candidateBudgetLimit;
-    const candidateBudget = new RequestBudget(candidateBudgetLimit);
-    const reviewSearch = dependencies.createReviewService?.(config, candidateBudget) ?? new ReviewSearchService(config, candidateBudget);
-    const review = await reviewSearch.analyzePlace(
-      place,
-      intent.scope === "point" ? intent.location : undefined,
-      intent.preferences,
-      3
-    );
-    reviewBudgetSnapshots.push(candidateBudget.snapshot());
-    const supportFacilities = publicData.findNearbySupportFacilities(
-      place,
-      "all",
-      intent.radiusM,
-      4,
-      place.roadAddress ?? place.address
-    );
-    const publicEvidence = [
-      ...publicData.findMatchingAccessibilityEvidence(place),
-      ...supportEvidenceFromFacilities(supportFacilities)
-    ];
-    const supportGrade = officialSupportGrade(publicEvidence);
-    const supportScore = officialSupportScore(publicEvidence);
-    const preferenceScore = preferenceBonus(intent.preferences, {
-      reviewSignals: [...review.positive_signals, ...review.negative_signals, ...review.ambiguous_signals],
-      facilities: supportFacilities
-    });
-    ranked.push({
-      place,
-      review,
-      official_support_grade: supportGrade,
-      recommendation_status: recommendationStatus(review.review_signal_grade, supportGrade),
-      ranking_score: calculateRankingScore(
-        review.review_signal_grade,
-        review.review_signal_score,
-        supportGrade,
-        supportScore
-      ) + preferenceScore,
-      official_support_score: supportScore,
-      public_support_evidence: publicEvidence,
-      support_facilities_nearby: supportFacilities
-    });
-  }
+  const budgetLimits = candidateBudgetLimits(allocation.review, candidates.length);
+  const analyzedCandidates = await mapWithConcurrency(
+    candidates,
+    config.reviewCandidateConcurrency,
+    async (place, index): Promise<{ ranked: RankedPlace; budget: RequestBudgetSnapshot }> => {
+      const candidateBudgetLimit = budgetLimits[index] ?? 0;
+      const candidateBudget = new RequestBudget(candidateBudgetLimit);
+      const reviewSearch = dependencies.createReviewService?.(config, candidateBudget) ??
+        new ReviewSearchService(config, candidateBudget);
+      const review = await reviewSearch.analyzePlace(
+        place,
+        intent.scope === "point" ? intent.location : undefined,
+        intent.preferences,
+        3
+      );
+      const supportFacilities = publicData.findNearbySupportFacilities(
+        place,
+        "all",
+        intent.radiusM,
+        4,
+        place.roadAddress ?? place.address
+      );
+      const publicEvidence = [
+        ...publicData.findMatchingAccessibilityEvidence(place),
+        ...supportEvidenceFromFacilities(supportFacilities)
+      ];
+      const supportGrade = officialSupportGrade(publicEvidence);
+      const supportScore = officialSupportScore(publicEvidence);
+      const preferenceScore = preferenceBonus(intent.preferences, {
+        reviewSignals: [...review.positive_signals, ...review.negative_signals, ...review.ambiguous_signals],
+        facilities: supportFacilities
+      });
+      return {
+        ranked: {
+          place,
+          review,
+          official_support_grade: supportGrade,
+          recommendation_status: recommendationStatus(review.review_signal_grade, supportGrade),
+          ranking_score: calculateRankingScore(
+            review.review_signal_grade,
+            review.review_signal_score,
+            supportGrade,
+            supportScore
+          ) + preferenceScore,
+          official_support_score: supportScore,
+          public_support_evidence: publicEvidence,
+          support_facilities_nearby: supportFacilities
+        },
+        budget: candidateBudget.snapshot()
+      };
+    }
+  );
+  const ranked = analyzedCandidates.map((item) => item.ranked);
+  const reviewBudgetSnapshots = analyzedCandidates.map((item) => item.budget);
 
   const partitions = partitionRankedPlaces(ranked, false);
   const recommendations = sortRankedPlaces(partitions.recommendations).slice(0, intent.limit);

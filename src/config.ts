@@ -22,6 +22,7 @@ export interface AppConfig {
   defaultLimit: number;
   maxPlaceCandidates: number;
   maxReviewSearchCalls: number;
+  reviewCandidateConcurrency: number;
   maxExternalApiCallsPerRequest: number;
   searchResultsPerQuery: number;
   searchTimeoutMs: number;
@@ -67,6 +68,7 @@ export function loadConfig(): AppConfig {
     defaultLimit: intEnv("DEFAULT_LIMIT", 5, 1, 10),
     maxPlaceCandidates: intEnv("MAX_PLACE_CANDIDATES", 15, 5, 30),
     maxReviewSearchCalls: intEnv("MAX_REVIEW_SEARCH_CALLS", 60, 1, 120),
+    reviewCandidateConcurrency: intEnv("REVIEW_CANDIDATE_CONCURRENCY", 2, 1, 4),
     maxExternalApiCallsPerRequest: intEnv("MAX_EXTERNAL_API_CALLS_PER_REQUEST", 40, 8, 120),
     searchResultsPerQuery: intEnv("SEARCH_RESULTS_PER_QUERY", 3, 1, 50),
     searchTimeoutMs: intEnv("SEARCH_TIMEOUT_MS", 3500, 500, 30_000),

@@ -98,4 +98,68 @@ describe("place-first recommendation engine", () => {
       }
     });
   });
+
+  it("analyzes candidates with bounded concurrency while preserving budget allocation", async () => {
+    const concurrentPlaces: PlaceCandidate[] = Array.from({ length: 5 }, (_, index) => ({
+      sourcePlaceId: String(index + 1),
+      name: `후보카페${index + 1}`,
+      category: "카페",
+      address: "서울 송파구",
+      lat: 37.51 + index * 0.0001,
+      lng: 127.1
+    }));
+    const placeClient: PlaceEngineClient = {
+      resolveLocation: async () => ({ name: "잠실역", lat: 37.513, lng: 127.1, provider: "test" }),
+      searchNearbyPlaces: async () => concurrentPlaces,
+      categorySearch: async () => concurrentPlaces,
+      keywordSearchPage: async () => []
+    };
+    let active = 0;
+    let maxActive = 0;
+    const reviewService: ReviewEngineService = {
+      searchQueries: async () => [],
+      analyzePlace: async (place) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        active -= 1;
+        return analysis(place);
+      }
+    };
+
+    const output = await runRecommendationEngine(
+      { query: "잠실역 근처 카페", limit: 5 },
+      {
+        ...config,
+        kakaoRestApiKey: "test",
+        maxExternalApiCallsPerRequest: 41,
+        maxPlaceCandidates: 15,
+        reviewCandidateConcurrency: 2
+      },
+      {
+        createPlaceClient: () => placeClient,
+        createReviewService: () => reviewService,
+        createPublicDataClient: () => ({
+          findNearbySupportFacilities: () => [],
+          findMatchingAccessibilityEvidence: () => []
+        })
+      }
+    );
+
+    expect(maxActive).toBe(2);
+    expect(output.request_budget).toMatchObject({
+      allocations: {
+        review: {
+          limit: 21,
+          candidates: [
+            { limit: 4 },
+            { limit: 4 },
+            { limit: 4 },
+            { limit: 4 },
+            { limit: 5 }
+          ]
+        }
+      }
+    });
+  });
 });
