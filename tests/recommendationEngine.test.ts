@@ -187,11 +187,11 @@ describe("place-first recommendation engine", () => {
         review: {
           limit: 21,
           candidates: [
-            { limit: 4 },
-            { limit: 4 },
-            { limit: 4 },
-            { limit: 4 },
-            { limit: 5 }
+            { limit: 3 },
+            { limit: 3 },
+            { limit: 3 },
+            { limit: 3 },
+            { limit: 3 }
           ]
         }
       }
@@ -327,6 +327,103 @@ describe("place-first recommendation engine", () => {
       }
     });
     expect(output.fallback_recommendations).toHaveLength(2);
+  });
+
+  it("fills a verified-result shortfall with clearly unverified candidates", async () => {
+    const thirdPlace: PlaceCandidate = {
+      sourcePlaceId: "3",
+      name: "추가카페",
+      category: "카페",
+      address: "서울 송파구",
+      lat: 37.512,
+      lng: 127.102
+    };
+    const output = await runRecommendationEngine(
+      { location: "잠실역", category: "cafe" },
+      { ...config, kakaoRestApiKey: "test" },
+      {
+        createPlaceClient: () => placeClientFor([...places, thirdPlace]),
+        createReviewService: () => reviewServiceFor(async (place) => analysis(place)),
+        createPublicDataClient: () => emptyPublicData
+      }
+    );
+
+    expect(output).toMatchObject({
+      recommendations: [expect.objectContaining({ name: "검증카페" })],
+      fallback_used: true,
+      fallback_reason: "review_positive_results_below_threshold",
+      candidate_pipeline: {
+        verified_recommendations: 1,
+        verification_required_candidates: 2
+      }
+    });
+    expect(output.fallback_recommendations).toEqual([
+      expect.objectContaining({ name: "추가카페", accessibility_status: "unverified" }),
+      expect.objectContaining({ name: "일반카페", accessibility_status: "unverified" })
+    ]);
+    expect(String(output.answer_markdown)).toContain("추가 확인 필요 후보 2곳");
+  });
+
+  it("progressively analyzes later candidates until three verified results are found", async () => {
+    const progressivePlaces: PlaceCandidate[] = Array.from({ length: 8 }, (_, index) => ({
+      sourcePlaceId: String(index + 1),
+      name: `점진후보${index + 1}`,
+      category: "카페",
+      address: "서울 송파구",
+      lat: 37.513 + index * 0.0001,
+      lng: 127.1
+    }));
+    const analyzedNames: string[] = [];
+    const verifiedNames = new Set(["점진후보1", "점진후보6", "점진후보7"]);
+
+    const output = await runRecommendationEngine(
+      { location: "잠실역", category: "cafe" },
+      {
+        ...config,
+        kakaoRestApiKey: "test",
+        maxExternalApiCallsPerRequest: 40,
+        maxPlaceCandidates: 15,
+        reviewCandidateConcurrency: 2
+      },
+      {
+        createPlaceClient: () => placeClientFor(progressivePlaces),
+        createReviewService: (_config, budget) => ({
+          searchQueries: async () => [],
+          analyzePlace: async (place) => {
+            analyzedNames.push(place.name);
+            budget.tryConsume(budget.remaining);
+            const verified = verifiedNames.has(place.name);
+            return analysis(place, {
+              review_signal_grade: verified ? "R1" : "R4",
+              review_signal_score: verified ? 80 : 0,
+              positive_signals: verified ? venueEvidence.signals : [],
+              results: verified ? [{ ...venueEvidence, title: `${place.name} 접근성 후기` }] : []
+            });
+          }
+        }),
+        createPublicDataClient: () => emptyPublicData
+      }
+    );
+
+    expect(analyzedNames).toHaveLength(7);
+    expect(analyzedNames).not.toContain("점진후보8");
+    expect(output).toMatchObject({
+      fallback_used: false,
+      fallback_reason: null,
+      candidate_pipeline: {
+        analyzed_candidates: 7,
+        verified_recommendations: 3,
+        verification_required_candidates: 0
+      },
+      request_budget: {
+        allocations: { review: { limit: 20, used: 20 } }
+      }
+    });
+    expect((output.recommendations as Array<{ name: string }>).map((item) => item.name)).toEqual([
+      "점진후보1",
+      "점진후보6",
+      "점진후보7"
+    ]);
   });
 
   it("keeps strong negative review signals out of fallback recommendations", async () => {

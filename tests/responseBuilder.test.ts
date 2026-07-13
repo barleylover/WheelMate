@@ -336,4 +336,50 @@ describe("buildRecommendResponse", () => {
       })
     ]);
   });
+
+  it("shows verification-required candidates after a partial verified recommendation list", () => {
+    const unverified: RankedPlace = {
+      ...ranked,
+      place: { ...ranked.place, name: "추가확인카페", distance_m: 280 },
+      review: {
+        ...ranked.review,
+        place_name: "추가확인카페",
+        review_signal_grade: "R4",
+        review_signal_score: 0,
+        positive_signals: [],
+        results: []
+      },
+      official_support_grade: "none",
+      recommendation_status: "unverified",
+      ranking_score: 100,
+      official_support_score: 0,
+      public_support_evidence: []
+    };
+    const response = buildRecommendResponse({
+      interpretation: {
+        location: "잠실역",
+        category: "cafe",
+        radius_m: 800,
+        preferences: [],
+        unsupported_preferences: []
+      },
+      origin: { name: "잠실역", lat: 37.51, lng: 127.1 },
+      recommendations: [ranked],
+      notRecommended: [],
+      unverified: [unverified],
+      fallbackUsed: true,
+      fallbackReason: "review_positive_results_below_threshold",
+      fallbackRecommendations: [unverified]
+    });
+    const answer = String(response.answer_markdown);
+
+    expect(answer).toContain("1순위. A카페");
+    expect(answer).toContain("추가 확인 필요 후보 1곳");
+    expect(answer).toContain("확인 필요 후보 1. 추가확인카페");
+    expect(answer).toContain("검증된 추천은 아닙니다");
+    expect(response).toMatchObject({
+      fallback_used: true,
+      fallback_reason: "review_positive_results_below_threshold"
+    });
+  });
 });

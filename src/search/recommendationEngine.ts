@@ -113,6 +113,10 @@ function candidateBudgetLimits(total: number, count: number): number[] {
   });
 }
 
+const MINIMUM_RESULT_TARGET = 3;
+const INITIAL_REVIEW_BATCH_SIZE = 5;
+const MAX_REVIEW_QUERIES_PER_CANDIDATE = 3;
+
 function interpretation(intent: ResolvedSearchIntent, extraWarnings: string[]): QueryInterpretation {
   return {
     location: intent.location,
@@ -194,71 +198,95 @@ export async function runRecommendationEngine(
       }
     };
 
-  const analysisLimit = Math.min(
-    broadResult.candidates.length,
-    Math.max(intent.limit, Math.min(5, config.maxPlaceCandidates))
-  );
-  const candidates = broadResult.candidates.slice(0, analysisLimit);
-  const budgetLimits = candidateBudgetLimits(allocation.review, candidates.length);
-  const analyzedCandidates = await mapWithConcurrency(
-    candidates,
-    config.reviewCandidateConcurrency,
-    async (place, index): Promise<{ ranked: RankedPlace; budget: RequestBudgetSnapshot }> => {
-      const candidateBudgetLimit = budgetLimits[index] ?? 0;
-      const candidateBudget = new RequestBudget(candidateBudgetLimit);
-      const reviewSearch = dependencies.createReviewService?.(config, candidateBudget) ??
-        new ReviewSearchService(config, candidateBudget);
-      const review = await reviewSearch.analyzePlace(
-        place,
-        intent.scope === "point" ? intent.location : undefined,
-        intent.preferences,
-        3
-      );
-      const supportFacilities = publicData.findNearbySupportFacilities(
-        place,
-        "all",
-        intent.radiusM,
-        4,
-        place.roadAddress ?? place.address
-      );
-      const publicEvidence = [
-        ...publicData.findMatchingAccessibilityEvidence(place),
-        ...supportEvidenceFromFacilities(supportFacilities)
-      ];
-      const supportGrade = officialSupportGrade(publicEvidence);
-      const supportScore = officialSupportScore(publicEvidence);
-      const preferenceScore = preferenceBonus(intent.preferences, {
-        reviewSignals: [...review.positive_signals, ...review.negative_signals, ...review.ambiguous_signals],
-        facilities: supportFacilities
-      });
-      return {
-        ranked: {
+  const resultTarget = Math.min(intent.limit, MINIMUM_RESULT_TARGET);
+  const candidatesToAnalyze = broadResult.candidates.slice(0, config.maxPlaceCandidates);
+  const analyzedCandidates: Array<{ ranked: RankedPlace; budget: RequestBudgetSnapshot }> = [];
+  let nextCandidateIndex = 0;
+  let reviewBudgetUsed = 0;
+
+  while (nextCandidateIndex < candidatesToAnalyze.length && reviewBudgetUsed < allocation.review) {
+    const verifiedCount = partitionRankedPlaces(
+      analyzedCandidates.map((item) => item.ranked),
+      false
+    ).recommendations.length;
+    if (analyzedCandidates.length > 0 && verifiedCount >= resultTarget) break;
+
+    const remainingBudget = allocation.review - reviewBudgetUsed;
+    const remainingCandidates = candidatesToAnalyze.length - nextCandidateIndex;
+    const desiredBatchSize = analyzedCandidates.length === 0
+      ? Math.max(resultTarget, Math.min(INITIAL_REVIEW_BATCH_SIZE, config.maxPlaceCandidates))
+      : config.reviewCandidateConcurrency;
+    const batchSize = Math.min(desiredBatchSize, remainingCandidates, remainingBudget);
+    if (batchSize <= 0) break;
+
+    const batch = candidatesToAnalyze.slice(nextCandidateIndex, nextCandidateIndex + batchSize);
+    const batchBudgetTotal = Math.min(
+      remainingBudget,
+      batch.length * MAX_REVIEW_QUERIES_PER_CANDIDATE
+    );
+    const budgetLimits = candidateBudgetLimits(batchBudgetTotal, batch.length);
+    const batchResults = await mapWithConcurrency(
+      batch,
+      config.reviewCandidateConcurrency,
+      async (place, index): Promise<{ ranked: RankedPlace; budget: RequestBudgetSnapshot }> => {
+        const candidateBudgetLimit = budgetLimits[index] ?? 0;
+        const candidateBudget = new RequestBudget(candidateBudgetLimit);
+        const reviewSearch = dependencies.createReviewService?.(config, candidateBudget) ??
+          new ReviewSearchService(config, candidateBudget);
+        const review = await reviewSearch.analyzePlace(
           place,
-          review,
-          official_support_grade: supportGrade,
-          recommendation_status: recommendationStatus(review.review_signal_grade, supportGrade),
-          ranking_score: calculateRankingScore(
-            review.review_signal_grade,
-            review.review_signal_score,
-            supportGrade,
-            supportScore
-          ) + preferenceScore,
-          official_support_score: supportScore,
-          public_support_evidence: publicEvidence,
-          support_facilities_nearby: supportFacilities
-        },
-        budget: candidateBudget.snapshot()
-      };
-    }
-  );
+          intent.scope === "point" ? intent.location : undefined,
+          intent.preferences,
+          Math.min(MAX_REVIEW_QUERIES_PER_CANDIDATE, candidateBudgetLimit)
+        );
+        const supportFacilities = publicData.findNearbySupportFacilities(
+          place,
+          "all",
+          intent.radiusM,
+          4,
+          place.roadAddress ?? place.address
+        );
+        const publicEvidence = [
+          ...publicData.findMatchingAccessibilityEvidence(place),
+          ...supportEvidenceFromFacilities(supportFacilities)
+        ];
+        const supportGrade = officialSupportGrade(publicEvidence);
+        const supportScore = officialSupportScore(publicEvidence);
+        const preferenceScore = preferenceBonus(intent.preferences, {
+          reviewSignals: [...review.positive_signals, ...review.negative_signals, ...review.ambiguous_signals],
+          facilities: supportFacilities
+        });
+        return {
+          ranked: {
+            place,
+            review,
+            official_support_grade: supportGrade,
+            recommendation_status: recommendationStatus(review.review_signal_grade, supportGrade),
+            ranking_score: calculateRankingScore(
+              review.review_signal_grade,
+              review.review_signal_score,
+              supportGrade,
+              supportScore
+            ) + preferenceScore,
+            official_support_score: supportScore,
+            public_support_evidence: publicEvidence,
+            support_facilities_nearby: supportFacilities
+          },
+          budget: candidateBudget.snapshot()
+        };
+      }
+    );
+    analyzedCandidates.push(...batchResults);
+    reviewBudgetUsed += batchResults.reduce((sum, item) => sum + item.budget.used, 0);
+    nextCandidateIndex += batch.length;
+  }
   const ranked = analyzedCandidates.map((item) => item.ranked);
   const reviewBudgetSnapshots = analyzedCandidates.map((item) => item.budget);
 
   const partitions = partitionRankedPlaces(ranked, false);
   const recommendations = sortRankedPlaces(partitions.recommendations).slice(0, intent.limit);
-  const fallbackRecommendations = recommendations.length === 0
-    ? sortRankedPlaces(partitions.unverified).slice(0, Math.min(intent.limit, 3))
-    : [];
+  const verificationShortfall = Math.max(0, resultTarget - recommendations.length);
+  const fallbackRecommendations = sortRankedPlaces(partitions.unverified).slice(0, verificationShortfall);
   const reviewPositiveCount = recommendations.filter((item) =>
     item.review.review_signal_grade === "R1" || item.review.review_signal_grade === "R2"
   ).length;
@@ -271,11 +299,15 @@ export async function runRecommendationEngine(
           ? "content_preference_filtered_all_candidates"
           : "kakao_local_unavailable_or_no_candidates"
         : "no_review_positive_candidates";
-  const fallbackReason = recommendations.length > 0
-    ? null
-    : candidates.length === 0
-      ? candidateFallbackReason
-      : fallbackReasonForReviewResults(reviewPositiveCount, intent.limit) ?? "no_review_positive_candidates";
+  const belowTargetReason = fallbackReasonForReviewResults(reviewPositiveCount, intent.limit);
+  let fallbackReason: string | null;
+  if (recommendations.length > 0) {
+    fallbackReason = belowTargetReason;
+  } else if (analyzedCandidates.length === 0) {
+    fallbackReason = candidateFallbackReason;
+  } else {
+    fallbackReason = belowTargetReason ?? "no_review_positive_candidates";
+  }
   const extraWarnings = poolResult.diagnostics.content_relaxed
     ? ["content_preference_relaxed_because_no_matching_place_was_found"]
     : [];
@@ -289,15 +321,13 @@ export async function runRecommendationEngine(
     fallbackReason,
     fallbackRecommendations
   });
-  const reviewBudgetUsed = reviewBudgetSnapshots.reduce((sum, snapshot) => sum + snapshot.used, 0);
-
   return {
     ...response,
     search_architecture: "place_first_evidence_second_v2",
     candidate_pipeline: {
       ...poolResult.diagnostics,
       broad_evidence: broadResult.diagnostics,
-      analyzed_candidates: candidates.length,
+      analyzed_candidates: analyzedCandidates.length,
       verified_recommendations: recommendations.length,
       verification_required_candidates: fallbackRecommendations.length
     },

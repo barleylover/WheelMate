@@ -529,6 +529,22 @@ function buildMessage(
       lines.push(...supportFacilitySection(item.support_facilities_nearby));
       lines.push("");
     }
+    if (fallbackRecommendations.length > 0) {
+      lines.push(`추가 확인 필요 후보 ${fallbackRecommendations.length}곳`);
+      lines.push(
+        "아래 장소는 지역·업종 조건에는 맞지만 휠체어 접근성이 검증된 추천은 아닙니다. 방문 전 전화 확인이 필요합니다."
+      );
+      lines.push("");
+      for (const [index, item] of fallbackRecommendations.entries()) {
+        lines.push(verificationRequiredDisplayBlock(item, index + 1));
+        lines.push("");
+      }
+    } else if (fallbackReason === "review_positive_results_below_threshold") {
+      lines.push(
+        "추가 안내: 검증 목표 수보다 결과가 적지만, 더 보여드릴 수 있는 안전한 확인 필요 후보가 없었습니다."
+      );
+      lines.push("");
+    }
   }
   lines.push("");
   lines.push("확인되지 않은 정보");
